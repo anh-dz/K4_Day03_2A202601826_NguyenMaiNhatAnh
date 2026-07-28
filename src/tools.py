@@ -12,12 +12,12 @@ Mục tiêu:
 - Tool có contract rõ ràng: input, output, error semantics, side effect.
 - Không để tool crash khi nhập sai dữ liệu.
 - Error nghiệp vụ trả về chuỗi "LỖI: ..." để Agent đọc và xử lý tiếp.
+- Chỉ giữ các tool phục vụ trực tiếp việc ĐỊNH HƯỚNG nghề nghiệp: chấm tính cách,
+  match nghề phù hợp và xem chi tiết nghề được gợi ý.
 """
 
 import json
-import re
-from dataclasses import dataclass, field
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, Any
 
 
 # ============================================================
@@ -29,12 +29,6 @@ CAREER_DB = {
         "id": "ai_engineer",
         "name": "AI Engineer",
         "description": "Xây dựng, huấn luyện, triển khai và tối ưu các hệ thống AI/ML, LLM, chatbot và agent.",
-        "tasks": [
-            "Xây dựng mô hình Machine Learning",
-            "Tích hợp LLM vào sản phẩm",
-            "Thiết kế pipeline huấn luyện và đánh giá mô hình",
-            "Triển khai mô hình lên production",
-        ],
         "required_skills": [
             "Python",
             "Machine Learning",
@@ -60,12 +54,6 @@ CAREER_DB = {
         "id": "data_engineer",
         "name": "Data Engineer",
         "description": "Thiết kế, xây dựng và vận hành hệ thống dữ liệu, ETL/ELT pipeline, Data Warehouse/Lakehouse.",
-        "tasks": [
-            "Xây dựng pipeline xử lý dữ liệu",
-            "Thiết kế Data Warehouse",
-            "Tối ưu truy vấn SQL",
-            "Đảm bảo chất lượng và độ tin cậy dữ liệu",
-        ],
         "required_skills": [
             "SQL",
             "Python",
@@ -91,12 +79,6 @@ CAREER_DB = {
         "id": "backend_developer",
         "name": "Backend Developer",
         "description": "Phát triển API, xử lý logic nghiệp vụ, làm việc với cơ sở dữ liệu và hệ thống phía server.",
-        "tasks": [
-            "Thiết kế REST API",
-            "Xử lý logic nghiệp vụ",
-            "Làm việc với database",
-            "Tối ưu hiệu năng hệ thống",
-        ],
         "required_skills": [
             "Java",
             "C#",
@@ -123,12 +105,6 @@ CAREER_DB = {
         "id": "business_analyst",
         "name": "Business Analyst",
         "description": "Phân tích nghiệp vụ, làm cầu nối giữa khách hàng, người dùng và đội phát triển sản phẩm.",
-        "tasks": [
-            "Thu thập yêu cầu nghiệp vụ",
-            "Viết tài liệu đặc tả",
-            "Vẽ BPMN/UML",
-            "Trao đổi với stakeholder",
-        ],
         "required_skills": [
             "Requirement Analysis",
             "Communication",
@@ -153,12 +129,6 @@ CAREER_DB = {
         "id": "ux_ui_designer",
         "name": "UX/UI Designer",
         "description": "Thiết kế trải nghiệm người dùng và giao diện cho website, mobile app, SaaS hoặc sản phẩm số.",
-        "tasks": [
-            "Nghiên cứu người dùng",
-            "Thiết kế wireframe",
-            "Thiết kế prototype",
-            "Xây dựng design system",
-        ],
         "required_skills": [
             "Figma",
             "Design Thinking",
@@ -179,224 +149,6 @@ CAREER_DB = {
         },
     },
 }
-
-
-JOB_MARKET_DB = {
-    "ai_engineer": {
-        "hà nội": "Hà Nội: Nhu cầu AI Engineer cao trong các công ty công nghệ, ngân hàng, ERP, chatbot, automation.",
-        "tp.hcm": "TP.HCM: Nhiều cơ hội AI Engineer tại startup, product company và công ty có yếu tố nước ngoài.",
-        "đà nẵng": "Đà Nẵng: Cơ hội AI Engineer ít hơn Hà Nội/TP.HCM nhưng phù hợp nếu làm remote hoặc outsourcing.",
-    },
-    "data_engineer": {
-        "hà nội": "Hà Nội: Nhu cầu Data Engineer cao tại ngân hàng, viễn thông, ERP, thương mại điện tử.",
-        "tp.hcm": "TP.HCM: Cơ hội Data Engineer nhiều trong fintech, retail, logistics, startup.",
-        "đà nẵng": "Đà Nẵng: Có nhu cầu Data Engineer ở các công ty outsourcing và một số doanh nghiệp chuyển đổi số.",
-    },
-    "backend_developer": {
-        "hà nội": "Hà Nội: Backend Developer có nhu cầu ổn định trong hầu hết công ty phần mềm.",
-        "tp.hcm": "TP.HCM: Nhu cầu Backend Developer rất cao, nhiều lựa chọn startup và công ty quốc tế.",
-        "đà nẵng": "Đà Nẵng: Backend Developer phù hợp với outsourcing, product nhỏ và remote job.",
-    },
-}
-
-
-MENTOR_PROGRAM_DB = {
-    "ai_engineer": {
-        "hà nội": [
-            "Cộng đồng Machine Learning Cơ Bản",
-            "AI Vietnam",
-            "Các chương trình AI/ML tại trường đại học và trung tâm công nghệ",
-        ],
-        "tp.hcm": [
-            "AI Vietnam",
-            "VietAI community",
-            "Các workshop AI tại startup hub",
-        ],
-    },
-    "data_engineer": {
-        "hà nội": [
-            "Cộng đồng Data Engineering Việt Nam",
-            "Các khóa học Data Warehouse, Airflow, Spark",
-        ],
-        "tp.hcm": [
-            "Data community tại TP.HCM",
-            "Workshop về Analytics Engineering và Cloud Data",
-        ],
-    },
-}
-
-
-
-@dataclass
-class UserProfile:
-    """
-    Cấu trúc dữ liệu hồ sơ người dùng cho chatbot định hướng nghề nghiệp.
-
-    Attributes:
-        user_id (str):
-            ID định danh duy nhất của người dùng.
-
-        interests (List[str]):
-            Danh sách sở thích hoặc lĩnh vực người dùng quan tâm.
-            Ví dụ: ["AI", "Data", "Lập trình"]
-
-        expected_salary (Optional[Union[int, float, str]]):
-            Mức lương mong muốn của người dùng.
-            Có thể là số hoặc chuỗi.
-            Ví dụ: 20000000 hoặc "20 triệu/tháng"
-
-        preferred_location (Optional[str]):
-            Địa điểm làm việc mong muốn.
-            Ví dụ: "Hà Nội", "TP.HCM", "Đà Nẵng"
-
-        avoid_industries (List[str]):
-            Danh sách ngành/lĩnh vực người dùng muốn tránh.
-            Ví dụ: ["Sales", "Tài chính"]
-
-        skills (List[str]):
-            Danh sách kỹ năng hiện có của người dùng.
-            Ví dụ: ["Python", "SQL", "Machine Learning"]
-
-        profile_vector (Optional[Dict[str, int]]):
-            Vector đặc điểm tính cách/nghề nghiệp theo mô hình RIASEC.
-            Ví dụ: {"R": 2, "I": 5, "A": 3, "S": 2, "E": 1, "C": 4}
-    """
-
-    user_id: str
-    interests: List[str] = field(default_factory=list)
-    expected_salary: Optional[Union[int, float, str]] = None
-    preferred_location: Optional[str] = None
-    avoid_industries: List[str] = field(default_factory=list)
-    skills: List[str] = field(default_factory=list)
-    profile_vector: Optional[Dict[str, int]] = None
-
-    def __post_init__(self):
-        """
-        Validate và chuẩn hóa dữ liệu sau khi khởi tạo object.
-        """
-
-        if not isinstance(self.user_id, str) or not self.user_id.strip():
-            raise ValueError("user_id không được rỗng")
-
-        self.user_id = self.user_id.strip()
-
-        self.interests = self._normalize_list(self.interests)
-        self.avoid_industries = self._normalize_list(self.avoid_industries)
-        self.skills = self._normalize_list(self.skills)
-
-        if self.preferred_location is not None:
-            self.preferred_location = str(self.preferred_location).strip()
-
-        if self.profile_vector is not None:
-            self._validate_profile_vector(self.profile_vector)
-
-    @staticmethod
-    def _normalize_list(value: Any) -> List[str]:
-        """
-        Chuẩn hóa dữ liệu dạng list.
-
-        Nếu value là None -> trả về list rỗng.
-        Nếu value là list -> ép từng phần tử sang string và loại bỏ chuỗi rỗng.
-        Nếu value là kiểu khác -> bọc thành list một phần tử.
-        """
-
-        if value is None:
-            return []
-
-        if isinstance(value, list):
-            return [str(item).strip() for item in value if str(item).strip()]
-
-        return [str(value).strip()] if str(value).strip() else []
-
-    @staticmethod
-    def _validate_profile_vector(profile_vector: Dict[str, int]) -> None:
-        """
-        Validate vector RIASEC.
-
-        Yêu cầu:
-        - profile_vector phải là dict.
-        - Có đủ 6 trait: R, I, A, S, E, C.
-        - Mỗi điểm là số nguyên từ 0 đến 5.
-        """
-
-        if not isinstance(profile_vector, dict):
-            raise ValueError("profile_vector phải là dict")
-
-        required_traits = {"R", "I", "A", "S", "E", "C"}
-        current_traits = set(profile_vector.keys())
-
-        missing_traits = required_traits - current_traits
-        if missing_traits:
-            raise ValueError(f"profile_vector thiếu trait: {sorted(missing_traits)}")
-
-        for trait in required_traits:
-            score = profile_vector.get(trait)
-
-            if not isinstance(score, int):
-                raise ValueError(f"Điểm của trait '{trait}' phải là số nguyên")
-
-            if score < 0 or score > 5:
-                raise ValueError(f"Điểm của trait '{trait}' phải nằm trong khoảng 0 đến 5")
-
-    def to_dict(self) -> Dict[str, Any]:
-        """
-        Chuyển UserProfile object sang dict.
-
-        Returns:
-            Dict[str, Any]: Dữ liệu hồ sơ người dùng dạng dictionary.
-        """
-
-        return {
-            "user_id": self.user_id,
-            "interests": list(self.interests),
-            "expected_salary": self.expected_salary,
-            "preferred_location": self.preferred_location,
-            "avoid_industries": list(self.avoid_industries),
-            "skills": list(self.skills),
-            "profile_vector": dict(self.profile_vector) if self.profile_vector else None,
-        }
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any], user_id: Optional[str] = None) -> "UserProfile":
-        """
-        Tạo UserProfile object từ dictionary.
-
-        Args:
-            data (Dict[str, Any]):
-                Dữ liệu hồ sơ người dùng dạng dict.
-
-            user_id (Optional[str]):
-                ID người dùng dự phòng nếu trong data chưa có user_id.
-
-        Returns:
-            UserProfile: Object hồ sơ người dùng.
-
-        Raises:
-            TypeError: Nếu data không phải dict.
-            ValueError: Nếu user_id rỗng hoặc profile_vector không hợp lệ.
-        """
-
-        if not isinstance(data, dict):
-            raise TypeError("data phải là dict")
-
-        resolved_user_id = str(data.get("user_id") or user_id or "").strip()
-
-        if not resolved_user_id:
-            raise ValueError("user_id không được rỗng")
-
-        return cls(
-            user_id=resolved_user_id,
-            interests=data.get("interests"),
-            expected_salary=data.get("expected_salary"),
-            preferred_location=data.get("preferred_location"),
-            avoid_industries=data.get("avoid_industries"),
-            skills=data.get("skills"),
-            profile_vector=data.get("profile_vector"),
-        )
-
-
-USER_PROFILE_STORE: Dict[str, UserProfile] = {}
-
 
 
 # ============================================================
@@ -504,298 +256,6 @@ def run_personality_assessment(answers: Dict[str, int]) -> str:
         return f"LỖI: Xảy ra lỗi khi chấm trắc nghiệm tính cách ({e})."
 
 
-def extract_skills_from_cv(cv_text: str) -> str:
-    """
-    Trích xuất kỹ năng từ nội dung CV/portfolio.
-
-    Name:
-        extract_skills_from_cv
-
-    Purpose:
-        Dùng khi người dùng gửi nội dung CV dạng text.
-        Không dùng khi người dùng chỉ hỏi thông tin nghề chung.
-
-    Input schema:
-        cv_text (str): Nội dung CV/portfolio dạng plain text.
-
-    Output schema:
-        str: JSON string gồm technical_skills, soft_skills, tools, languages.
-
-    Error semantics:
-        Nếu cv_text rỗng hoặc không phải string -> trả về "LỖI: ...".
-
-    Side effect:
-        Read-only.
-
-    Example:
-        >>> extract_skills_from_cv("Python, SQL, Airflow, teamwork")
-    """
-    try:
-        if not isinstance(cv_text, str):
-            return "LỖI: cv_text phải là chuỗi văn bản."
-
-        text = cv_text.strip()
-        if not text:
-            return "LỖI: cv_text đang rỗng. Vui lòng cung cấp nội dung CV."
-
-        lower = text.lower()
-
-        skill_keywords = {
-            "technical_skills": [
-                "python",
-                "sql",
-                "machine learning",
-                "deep learning",
-                "java",
-                "c#",
-                "go",
-                "spark",
-                "airflow",
-                "kafka",
-                "clickhouse",
-                "docker",
-                "rest api",
-            ],
-            "soft_skills": [
-                "communication",
-                "teamwork",
-                "problem solving",
-                "leadership",
-                "giao tiếp",
-                "làm việc nhóm",
-                "giải quyết vấn đề",
-            ],
-            "tools": [
-                "figma",
-                "jira",
-                "git",
-                "github",
-                "gitlab",
-                "power bi",
-                "tableau",
-                "excel",
-            ],
-            "languages": [
-                "english",
-                "tiếng anh",
-                "japanese",
-                "tiếng nhật",
-                "korean",
-                "tiếng hàn",
-            ],
-        }
-
-        extracted = {}
-
-        for group, keywords in skill_keywords.items():
-            found = []
-            for kw in keywords:
-                if kw in lower:
-                    found.append(kw)
-            extracted[group] = sorted(list(set(found)))
-
-        extracted["raw_skill_count"] = sum(len(v) for v in extracted.values())
-
-        return _safe_json(extracted)
-
-    except Exception as e:
-        return f"LỖI: Xảy ra lỗi khi trích xuất kỹ năng từ CV ({e})."
-
-
-def get_user_profile(user_id: str) -> str:
-    """
-    Đọc hồ sơ người dùng từ bộ nhớ giả lập.
-
-    Name:
-        get_user_profile
-
-    Purpose:
-        Dùng khi Agent cần biết thông tin đã lưu của người dùng.
-        Không dùng nếu chưa có user_id.
-
-    Input schema:
-        user_id (str): ID người dùng.
-
-    Output schema:
-        str: JSON string chứa profile người dùng.
-
-    Error semantics:
-        Nếu user_id rỗng -> "LỖI: ...".
-        Nếu chưa có profile -> trả profile mặc định.
-
-    Side effect:
-        Read-only.
-
-    Example:
-        >>> get_user_profile("user_001")
-    """
-    try:
-        if not isinstance(user_id, str) or not user_id.strip():
-            return "LỖI: user_id phải là chuỗi không rỗng."
-
-        profile = USER_PROFILE_STORE.get(user_id)
-        if profile is None:
-            profile = UserProfile(user_id=user_id)
-        elif isinstance(profile, dict):
-            profile = UserProfile.from_dict(profile, user_id=user_id)
-
-        return _safe_json(profile.to_dict())
-
-    except Exception as e:
-        return f"LỖI: Xảy ra lỗi khi đọc hồ sơ người dùng ({e})."
-
-
-def update_user_profile(user_id: str, updates: Dict[str, Any]) -> str:
-    """
-    Cập nhật hồ sơ người dùng vào bộ nhớ giả lập.
-
-    Name:
-        update_user_profile
-
-    Purpose:
-        Dùng khi cần lưu sở thích, kỹ năng, mức lương mong muốn, địa điểm, ngành muốn tránh.
-        Không dùng để tra cứu nghề nghiệp.
-
-    Input schema:
-        user_id (str): ID người dùng.
-        updates (dict): Các trường cần cập nhật.
-                        Hỗ trợ: interests, expected_salary, preferred_location,
-                        avoid_industries, skills, profile_vector.
-
-    Output schema:
-        str: JSON string chứa profile sau khi cập nhật.
-
-    Error semantics:
-        Nếu user_id rỗng hoặc updates không phải dict -> "LỖI: ...".
-
-    Side effect:
-        Có thay đổi trạng thái trong USER_PROFILE_STORE.
-
-    Example:
-        >>> update_user_profile("user_001", {"interests": ["AI", "Data"], "preferred_location": "Hà Nội"})
-    """
-    try:
-        if not isinstance(user_id, str) or not user_id.strip():
-            return "LỖI: user_id phải là chuỗi không rỗng."
-
-        if not isinstance(updates, dict):
-            return "LỖI: updates phải là dict."
-
-        allowed_fields = {
-            "interests",
-            "expected_salary",
-            "preferred_location",
-            "avoid_industries",
-            "skills",
-            "profile_vector",
-        }
-
-        invalid_fields = [key for key in updates.keys() if key not in allowed_fields]
-        if invalid_fields:
-            return f"LỖI: Trường không hợp lệ: {invalid_fields}. Trường hỗ trợ: {sorted(allowed_fields)}."
-
-        current = USER_PROFILE_STORE.get(user_id)
-        if current is None:
-            current = UserProfile(user_id=user_id)
-        elif isinstance(current, dict):
-            current = UserProfile.from_dict(current, user_id=user_id)
-
-        for field_name, value in updates.items():
-            setattr(current, field_name, value)
-
-        USER_PROFILE_STORE[user_id] = current
-
-        return _safe_json({
-            "message": "Cập nhật profile thành công.",
-            "profile": current.to_dict(),
-        })
-
-    except Exception as e:
-        return f"LỖI: Xảy ra lỗi khi cập nhật hồ sơ người dùng ({e})."
-
-
-def search_career_paths(query: str, filters: Dict[str, Any] = None) -> str:
-    """
-    Tìm kiếm nghề nghiệp trong corpus nghề nghiệp giả lập.
-
-    Name:
-        search_career_paths
-
-    Purpose:
-        Dùng khi người dùng hỏi mơ hồ về nghề, nhiệm vụ, kỹ năng, ngành.
-        Đây là bản mock của RAG/vector search.
-
-    Input schema:
-        query (str): Từ khóa tìm kiếm.
-        filters (dict, optional): Bộ lọc, ví dụ {"min_trait": "I"}.
-
-    Output schema:
-        str: JSON string chứa danh sách nghề phù hợp.
-
-    Error semantics:
-        Nếu query rỗng -> "LỖI: ...".
-
-    Side effect:
-        Read-only.
-
-    Example:
-        >>> search_career_paths("python dữ liệu", {})
-    """
-    try:
-        if not isinstance(query, str) or not query.strip():
-            return "LỖI: query phải là chuỗi không rỗng."
-
-        if filters is None:
-            filters = {}
-
-        if not isinstance(filters, dict):
-            return "LỖI: filters phải là dict hoặc None."
-
-        q = _normalize_text(query)
-        results = []
-
-        for career_id, career in CAREER_DB.items():
-            searchable_text = " ".join([
-                career["name"],
-                career["description"],
-                " ".join(career["tasks"]),
-                " ".join(career["required_skills"]),
-            ]).lower()
-
-            score = 0
-            for token in re.split(r"\s+", q):
-                if token and token in searchable_text:
-                    score += 1
-
-            min_trait = filters.get("min_trait")
-            if min_trait:
-                trait_score = career["riasec"].get(str(min_trait).upper(), 0)
-                if trait_score < 3:
-                    continue
-
-            if score > 0:
-                results.append({
-                    "career_id": career_id,
-                    "name": career["name"],
-                    "match_score": score,
-                    "description": career["description"],
-                })
-
-        results = sorted(results, key=lambda item: item["match_score"], reverse=True)
-
-        if not results:
-            return f"LỖI: Không tìm thấy nghề phù hợp với truy vấn '{query}'."
-
-        return _safe_json({
-            "query": query,
-            "filters": filters,
-            "results": results,
-        })
-
-    except Exception as e:
-        return f"LỖI: Xảy ra lỗi khi tìm kiếm nghề nghiệp ({e})."
-
-
 def get_career_detail(career_id: str) -> str:
     """
     Lấy chi tiết một nghề theo career_id.
@@ -804,7 +264,8 @@ def get_career_detail(career_id: str) -> str:
         get_career_detail
 
     Purpose:
-        Dùng khi người dùng muốn xem chi tiết nghề: mô tả, nhiệm vụ, kỹ năng, lương, triển vọng.
+        Dùng khi người dùng muốn xem chi tiết nghề vừa được định hướng/gợi ý:
+        mô tả, kỹ năng, lương, triển vọng.
 
     Input schema:
         career_id (str): ID hoặc tên nghề.
@@ -832,63 +293,6 @@ def get_career_detail(career_id: str) -> str:
 
     except Exception as e:
         return f"LỖI: Xảy ra lỗi khi lấy chi tiết nghề nghiệp ({e})."
-
-
-def search_job_market_data(role: str, region: str) -> str:
-    """
-    Tra cứu dữ liệu thị trường việc làm theo vai trò và khu vực.
-
-    Name:
-        search_job_market_data
-
-    Purpose:
-        Dùng khi người dùng hỏi về nhu cầu tuyển dụng, mức độ phổ biến của nghề theo địa điểm.
-
-    Input schema:
-        role (str): Tên nghề hoặc career_id.
-        region (str): Khu vực, ví dụ: "Hà Nội", "TP.HCM", "Đà Nẵng".
-
-    Output schema:
-        str: Chuỗi mô tả dữ liệu thị trường việc làm.
-
-    Error semantics:
-        Nếu không có dữ liệu role/region -> "LỖI: ...".
-
-    Side effect:
-        Read-only.
-
-    Example:
-        >>> search_job_market_data("AI Engineer", "Hà Nội")
-    """
-    try:
-        career_id = _find_career_id(role)
-
-        if not career_id:
-            return f"LỖI: Không tìm thấy role '{role}'."
-
-        region_key = _normalize_text(region)
-
-        aliases = {
-            "hồ chí minh": "tp.hcm",
-            "ho chi minh": "tp.hcm",
-            "hcm": "tp.hcm",
-            "tphcm": "tp.hcm",
-            "tp hcm": "tp.hcm",
-            "ha noi": "hà nội",
-            "da nang": "đà nẵng",
-        }
-
-        region_key = aliases.get(region_key, region_key)
-
-        market_by_role = JOB_MARKET_DB.get(career_id, {})
-
-        if region_key not in market_by_role:
-            return f"LỖI: Không có dữ liệu thị trường cho role '{role}' tại khu vực '{region}'."
-
-        return market_by_role[region_key]
-
-    except Exception as e:
-        return f"LỖI: Xảy ra lỗi khi tra cứu thị trường việc làm ({e})."
 
 
 def match_profile_to_careers(profile_vector: Dict[str, int], top_k: int = 3) -> str:
@@ -964,262 +368,14 @@ def match_profile_to_careers(profile_vector: Dict[str, int], top_k: int = 3) -> 
         return f"LỖI: Xảy ra lỗi khi match hồ sơ với nghề nghiệp ({e})."
 
 
-def compare_careers(career_ids: List[str]) -> str:
-    """
-    So sánh nhiều nghề side-by-side.
-
-    Name:
-        compare_careers
-
-    Purpose:
-        Dùng khi người dùng phân vân giữa nhiều lựa chọn nghề nghiệp.
-
-    Input schema:
-        career_ids (list[str]): Danh sách career_id hoặc tên nghề.
-                                Ví dụ: ["ai_engineer", "data_engineer"]
-
-    Output schema:
-        str: JSON string chứa bảng so sánh nghề.
-
-    Error semantics:
-        Nếu career_ids không phải list, rỗng, hoặc có nghề không tồn tại -> "LỖI: ...".
-
-    Side effect:
-        Read-only.
-
-    Example:
-        >>> compare_careers(["ai_engineer", "data_engineer"])
-    """
-    try:
-        if not isinstance(career_ids, list):
-            return "LỖI: career_ids phải là list. Ví dụ: ['ai_engineer', 'data_engineer']."
-
-        if len(career_ids) < 2:
-            return "LỖI: Cần ít nhất 2 nghề để so sánh."
-
-        comparison = []
-
-        for item in career_ids:
-            found_id = _find_career_id(item)
-
-            if not found_id:
-                return f"LỖI: Không tìm thấy nghề '{item}'."
-
-            career = CAREER_DB[found_id]
-            comparison.append({
-                "career_id": found_id,
-                "name": career["name"],
-                "description": career["description"],
-                "required_skills": career["required_skills"],
-                "salary_range": career["salary_range"],
-                "growth_outlook": career["growth_outlook"],
-            })
-
-        return _safe_json({
-            "comparison": comparison,
-        })
-
-    except Exception as e:
-        return f"LỖI: Xảy ra lỗi khi so sánh nghề nghiệp ({e})."
-
-
-def get_learning_roadmap(career_id: str, current_level: str = "beginner") -> str:
-    """
-    Gợi ý lộ trình học tập theo nghề và trình độ hiện tại.
-
-    Name:
-        get_learning_roadmap
-
-    Purpose:
-        Dùng khi người dùng hỏi cần học gì để theo một nghề.
-
-    Input schema:
-        career_id (str): ID hoặc tên nghề.
-        current_level (str): beginner, intermediate, advanced.
-
-    Output schema:
-        str: JSON string chứa roadmap theo từng bước.
-
-    Error semantics:
-        Nếu nghề hoặc level không hợp lệ -> "LỖI: ...".
-
-    Side effect:
-        Read-only.
-
-    Example:
-        >>> get_learning_roadmap("ai_engineer", "beginner")
-    """
-    try:
-        found_id = _find_career_id(career_id)
-
-        if not found_id:
-            return f"LỖI: Không tìm thấy nghề '{career_id}'."
-
-        level = _normalize_text(current_level)
-        allowed_levels = ["beginner", "intermediate", "advanced"]
-
-        if level not in allowed_levels:
-            return f"LỖI: current_level phải thuộc {allowed_levels}."
-
-        roadmap_db = {
-            "ai_engineer": {
-                "beginner": [
-                    "Học Python cơ bản",
-                    "Học Toán cho AI: đại số tuyến tính, xác suất, đạo hàm",
-                    "Học Machine Learning cơ bản",
-                    "Làm 2-3 project nhỏ: phân loại dữ liệu, dự đoán giá, chatbot đơn giản",
-                ],
-                "intermediate": [
-                    "Học Deep Learning với PyTorch hoặc TensorFlow",
-                    "Học NLP và LLM",
-                    "Tìm hiểu Prompt Engineering, RAG, Agent",
-                    "Triển khai model/API bằng FastAPI hoặc Flask",
-                ],
-                "advanced": [
-                    "Học MLOps",
-                    "Tối ưu inference",
-                    "Xây dựng hệ thống AI production",
-                    "Nghiên cứu evaluation, monitoring, guardrails",
-                ],
-            },
-            "data_engineer": {
-                "beginner": [
-                    "Học SQL thật chắc",
-                    "Học Python xử lý dữ liệu",
-                    "Hiểu database, indexing, transaction",
-                    "Làm project ETL nhỏ từ CSV/API vào database",
-                ],
-                "intermediate": [
-                    "Học Airflow",
-                    "Học Data Warehouse",
-                    "Học Spark cơ bản",
-                    "Thiết kế pipeline batch processing",
-                ],
-                "advanced": [
-                    "Học Kafka/streaming",
-                    "Học Lakehouse",
-                    "Tối ưu performance cho dữ liệu lớn",
-                    "Thiết kế data platform production",
-                ],
-            },
-            "backend_developer": {
-                "beginner": [
-                    "Chọn một ngôn ngữ backend: Java, C#, Python hoặc Go",
-                    "Học REST API",
-                    "Học database cơ bản",
-                    "Làm project CRUD API",
-                ],
-                "intermediate": [
-                    "Học authentication/authorization",
-                    "Học Docker",
-                    "Học caching, message queue",
-                    "Xây dựng API có logging, validation, error handling",
-                ],
-                "advanced": [
-                    "Học microservices",
-                    "Học system design",
-                    "Tối ưu performance",
-                    "Triển khai CI/CD và observability",
-                ],
-            },
-        }
-
-        if found_id not in roadmap_db:
-            return f"LỖI: Chưa có roadmap cho nghề '{career_id}'."
-
-        return _safe_json({
-            "career_id": found_id,
-            "career_name": CAREER_DB[found_id]["name"],
-            "current_level": level,
-            "roadmap": roadmap_db[found_id][level],
-        })
-
-    except Exception as e:
-        return f"LỖI: Xảy ra lỗi khi lấy lộ trình học tập ({e})."
-
-
-def find_mentors_or_programs(career_id: str, region: str) -> str:
-    """
-    Tìm mentor, cộng đồng hoặc chương trình học phù hợp theo nghề và khu vực.
-
-    Name:
-        find_mentors_or_programs
-
-    Purpose:
-        Dùng khi người dùng muốn tìm nơi học, mentor, cộng đồng hoặc chương trình phát triển nghề.
-
-    Input schema:
-        career_id (str): ID hoặc tên nghề.
-        region (str): Khu vực, ví dụ: "Hà Nội", "TP.HCM".
-
-    Output schema:
-        str: JSON string chứa danh sách mentor/program/community gợi ý.
-
-    Error semantics:
-        Nếu không có dữ liệu cho nghề hoặc khu vực -> "LỖI: ...".
-
-    Side effect:
-        Read-only.
-
-    Example:
-        >>> find_mentors_or_programs("ai_engineer", "Hà Nội")
-    """
-    try:
-        found_id = _find_career_id(career_id)
-
-        if not found_id:
-            return f"LỖI: Không tìm thấy nghề '{career_id}'."
-
-        region_key = _normalize_text(region)
-
-        aliases = {
-            "hồ chí minh": "tp.hcm",
-            "ho chi minh": "tp.hcm",
-            "hcm": "tp.hcm",
-            "tphcm": "tp.hcm",
-            "tp hcm": "tp.hcm",
-            "ha noi": "hà nội",
-        }
-
-        region_key = aliases.get(region_key, region_key)
-
-        career_programs = MENTOR_PROGRAM_DB.get(found_id)
-
-        if not career_programs:
-            return f"LỖI: Chưa có dữ liệu mentor/program cho nghề '{career_id}'."
-
-        programs = career_programs.get(region_key)
-
-        if not programs:
-            return f"LỖI: Chưa có dữ liệu mentor/program cho nghề '{career_id}' tại '{region}'."
-
-        return _safe_json({
-            "career_id": found_id,
-            "career_name": CAREER_DB[found_id]["name"],
-            "region": region,
-            "programs": programs,
-        })
-
-    except Exception as e:
-        return f"LỖI: Xảy ra lỗi khi tìm mentor/program ({e})."
-
-
 # ============================================================
 # 📋 TOOL REGISTRY
 # ============================================================
 
 AVAILABLE_TOOLS = {
     "run_personality_assessment": run_personality_assessment,
-    "extract_skills_from_cv": extract_skills_from_cv,
-    "get_user_profile": get_user_profile,
-    "update_user_profile": update_user_profile,
-    "search_career_paths": search_career_paths,
-    "get_career_detail": get_career_detail,
-    "search_job_market_data": search_job_market_data,
     "match_profile_to_careers": match_profile_to_careers,
-    "compare_careers": compare_careers,
-    "get_learning_roadmap": get_learning_roadmap,
-    "find_mentors_or_programs": find_mentors_or_programs,
+    "get_career_detail": get_career_detail,
 }
 
 
@@ -1241,59 +397,14 @@ if __name__ == "__main__":
             "Input sai kiểu dữ liệu",
         ),
         (
-            "extract_skills_from_cv",
-            ("Tôi có kinh nghiệm Python, SQL, Airflow, Docker, teamwork và Git.",),
-            "Parse CV hợp lệ",
-        ),
-        (
-            "extract_skills_from_cv",
-            ("",),
-            "CV rỗng",
-        ),
-        (
-            "get_user_profile",
-            ("user_001",),
-            "Đọc profile mặc định",
-        ),
-        (
-            "update_user_profile",
-            ("user_001", {"interests": ["AI", "Data"], "preferred_location": "Hà Nội"}),
-            "Cập nhật profile",
-        ),
-        (
-            "search_career_paths",
-            ("python dữ liệu", {}),
-            "Tìm nghề theo query",
-        ),
-        (
-            "get_career_detail",
-            ("ai_engineer",),
-            "Lấy chi tiết nghề",
-        ),
-        (
-            "search_job_market_data",
-            ("AI Engineer", "Hà Nội"),
-            "Tra cứu thị trường việc làm",
-        ),
-        (
             "match_profile_to_careers",
             ({"R": 2, "I": 5, "A": 3, "S": 2, "E": 1, "C": 4}, 3),
             "Match profile với nghề",
         ),
         (
-            "compare_careers",
-            (["ai_engineer", "data_engineer"],),
-            "So sánh nghề",
-        ),
-        (
-            "get_learning_roadmap",
-            ("data_engineer", "beginner"),
-            "Lộ trình học",
-        ),
-        (
-            "find_mentors_or_programs",
-            ("ai_engineer", "Hà Nội"),
-            "Tìm mentor/program",
+            "get_career_detail",
+            ("ai_engineer",),
+            "Lấy chi tiết nghề",
         ),
         (
             "get_career_detail",
