@@ -1,7 +1,7 @@
 # Group Report: Lab 3 - Production-Grade Agentic System
 
 - **Team Name**: CareerWay
-- **Team Members**: Nguyen Mai Nhat Anh, Đỗ Tú Anh, Nguyễn Minh Đức, Nguyễn Thế Hải Đăng
+- **Team Members**: Nguyen Mai Nhat Anh, Đỗ Tú Anh, Nguyễn Minh Đức, Nguyễn Thế Hải Đăng, Trần Thanh Huyền
 - **Deployment Date**: 2026-07-28
 
 ---
