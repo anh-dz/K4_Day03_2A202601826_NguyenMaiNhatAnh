@@ -3,8 +3,10 @@
 File chính ghép nối tất cả các thành phần: Tools + Prompts + Test Cases + Multi-Provider.
 """
 
+import ast
 import json
 import os
+import re
 import sys
 from typing import Dict
 from dotenv import load_dotenv
@@ -85,58 +87,115 @@ def collect_riasec_answers(input_func=input) -> Dict[str, int]:
     }
 
 
+def _parse_llm_action(text: str) -> Dict[str, str]:
+    """
+    Trích Action hoặc Final Answer từ output LLM theo định dạng REACT_SYSTEM_PROMPT.
+
+    Lưu ý quan trọng: vì gọi provider.generate() không có stop-sequence, LLM đôi khi
+    KHÔNG dừng lại đúng lúc sau "Action:" như hướng dẫn mà tự bịa tiếp cả Observation
+    giả và Final Answer trong cùng một lần sinh. Nếu Action xuất hiện trước Final Answer
+    trong text, phải ưu tiên xử lý Action và bỏ qua toàn bộ phần bịa phía sau — vì hệ
+    thống mới là bên có quyền cung cấp Observation thật, không phải LLM tự tưởng tượng.
+    """
+    action_match = re.search(r"Action:\s*(\w+)\[(.*?)\]", text, re.DOTALL)
+    final_match = re.search(r"Final Answer:\s*(.+)", text, re.DOTALL)
+
+    if action_match and (not final_match or action_match.start() < final_match.start()):
+        return {
+            "type": "action",
+            "tool": action_match.group(1).strip(),
+            "raw_args": action_match.group(2).strip(),
+            # Chỉ giữ phần text tới hết Action thật -> loại bỏ Observation/Final Answer bịa phía sau
+            "clean_text": text[:action_match.end()].strip(),
+        }
+
+    if final_match:
+        return {"type": "final_answer", "content": final_match.group(1).strip()}
+
+    return {"type": "unrecognized", "content": text.strip()}
+
+
+def _parse_tool_args(raw_args: str):
+    """
+    Parse chuỗi tham số trong 'Action: tool[...]' thành tuple args để gọi AVAILABLE_TOOLS.
+    Dùng ast.literal_eval để an toàn hơn eval(); nếu không phải Python literal hợp lệ
+    (vd. career_id viết trần không có dấu ngoặc kép) thì coi cả chuỗi là 1 tham số string.
+    """
+    raw_args = raw_args.strip()
+    if not raw_args:
+        return ()
+
+    # LLM đôi khi viết tham số dạng keyword (vd. answers={...}) dù prompt yêu cầu vị trí
+    # (tool[tham_số]). Tool trong AVAILABLE_TOOLS chỉ nhận positional args, nên bóc phần
+    # "tên_biến=" đứng trước cấu trúc/giá trị trước khi parse.
+    cleaned = re.sub(r'\b[A-Za-z_]\w*\s*=\s*(?=[\{\[\'"\d])', '', raw_args)
+
+    try:
+        return ast.literal_eval(f"({cleaned},)")
+    except (ValueError, SyntaxError):
+        return (raw_args.strip("'\""),)
+
+
 def run_react_agent(user_query: str, provider, answers: Dict[str, int] = None):
     """
-    Dựng vòng lặp ReAct Agent (Thought -> Action -> Observation) có Guardrails.
-    3 bước dùng đúng 3 tool định hướng nghề nghiệp từ AVAILABLE_TOOLS (Role 2):
-    chấm RIASEC -> match nghề phù hợp -> xem chi tiết nghề được gợi ý nhiều nhất.
+    Vòng lặp ReAct Agent THẬT (Thought -> Action -> Observation) có Guardrails.
+    LLM tự suy luận dựa trên REACT_SYSTEM_PROMPT để chọn tool trong AVAILABLE_TOOLS
+    (Role 2) và tham số phù hợp; hệ thống thực thi tool, trả Observation lại cho
+    LLM ở bước kế tiếp — lặp tới khi có Final Answer hoặc chạm Guardrail MAX_ITERATIONS.
 
-    answers: kết quả khảo sát RIASEC (từ collect_riasec_answers). Nếu không
-    truyền vào (vd. chạy demo tự động, không tương tác), dùng vector mẫu mặc định.
+    answers: kết quả khảo sát RIASEC (từ collect_riasec_answers), được đính kèm vào
+    prompt ban đầu để LLM có dữ liệu thật gọi run_personality_assessment.
     """
     print(f"\n🤖 [REACT AGENT] Câu hỏi: {user_query}")
 
-    if answers is None:
-        answers = {"R": 2, "I": 5, "A": 3, "S": 2, "E": 1, "C": 4}
+    prompt = f"Câu hỏi của người dùng: {user_query}"
+    if answers:
+        prompt += f"\nKết quả khảo sát RIASEC của người dùng (thang điểm 1-5 mỗi trait): {answers}"
 
     step = 0
-    profile_vector = None
-    top_career_id = None
     answered = False
 
     while step < MAX_ITERATIONS:
         step += 1
         print(f"\n--- 🔄 Vòng lặp ReAct (Step {step}/{MAX_ITERATIONS}) ---")
 
-        if step == 1:
-            print("🧠 Thought: Cần chấm trắc nghiệm RIASEC trước để hiểu tính cách người dùng.")
-            print(f"🛠️ Action: run_personality_assessment[{answers}]")
+        llm_output = provider.generate(prompt, system_prompt=REACT_SYSTEM_PROMPT)
+        parsed = _parse_llm_action(llm_output)
 
-            obs = AVAILABLE_TOOLS["run_personality_assessment"](answers)
-            print(f"👁️ Observation: {obs}")
-            profile_vector = json.loads(obs)["profile_vector"]
-
-        elif step == 2:
-            print("🧠 Thought: Đã có vector tính cách, giờ tìm nghề phù hợp nhất với hồ sơ này.")
-            print(f"🛠️ Action: match_profile_to_careers[{profile_vector}, 1]")
-
-            obs = AVAILABLE_TOOLS["match_profile_to_careers"](profile_vector, 1)
-            print(f"👁️ Observation: {obs}")
-            top_career_id = json.loads(obs)["matches"][0]["career_id"]
-
-        elif step == 3:
-            print("🧠 Thought: Lấy chi tiết nghề được gợi ý nhiều nhất để tư vấn đầy đủ.")
-            print(f"🛠️ Action: get_career_detail[{top_career_id}]")
-
-            obs = AVAILABLE_TOOLS["get_career_detail"](top_career_id)
-            print(f"👁️ Observation: {obs}")
-
-            detail = json.loads(obs)
-            print("🧠 Thought: Tôi đã có đủ thông tin để trả lời.")
-            print(f"🏁 Final Answer: Dựa trên tính cách của bạn, nghề phù hợp nhất là "
-                  f"**{detail['name']}** — {detail['description']}")
+        if parsed["type"] == "final_answer":
+            print(f"🧠 {llm_output.strip()}")
+            print(f"🏁 Final Answer: {parsed['content']}")
             answered = True
             break
+
+        if parsed["type"] == "action":
+            tool_name = parsed["tool"]
+            clean_text = parsed["clean_text"]
+            print(f"🧠 {clean_text}")
+
+            tool_fn = AVAILABLE_TOOLS.get(tool_name)
+            if tool_fn is None:
+                observation = f"LỖI: Tool '{tool_name}' không tồn tại trong AVAILABLE_TOOLS."
+            else:
+                try:
+                    args = _parse_tool_args(parsed["raw_args"])
+                    observation = tool_fn(*args)
+                except Exception as e:
+                    observation = f"LỖI: Tham số cho tool '{tool_name}' không hợp lệ ({e})."
+
+            print(f"👁️ Observation: {observation}")
+            # Chỉ đưa lại phần Thought/Action THẬT (clean_text) vào context, KHÔNG đưa
+            # phần Observation/Final Answer mà LLM có thể đã tự bịa thêm phía sau.
+            prompt += f"\n{clean_text}\nObservation: {observation}"
+            continue
+
+        # LLM không tuân theo định dạng Thought/Action/Final Answer -> vẫn tính 1 bước,
+        # đưa lỗi format vào Observation để LLM tự sửa ở bước sau (hoặc chạm Guardrail).
+        print(f"🧠 (LLM không tuân theo định dạng bắt buộc):\n{llm_output.strip()}")
+        prompt += (
+            f"\n{llm_output.strip()}"
+            "\nObservation: LỖI: Không nhận diện được Action hoặc Final Answer đúng định dạng."
+        )
 
     if not answered:
         print(f"🛡️ GUARDRAIL TRIGGERED: Đã đạt giới hạn tối đa {MAX_ITERATIONS} bước. Ngắt lặp an toàn!")

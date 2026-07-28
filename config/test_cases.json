@@ -2,7 +2,7 @@
   {
     "id": 1,
     "category": "🟢 Đơn giản (Chỉ cần LLM)",
-    "question": "Business Analyst là nghề làm những công việc gì?",
+    "question": "Ngành Công nghệ thông tin thường làm những công việc gì?",
     "expected_behavior": "Chatbot trả lời trực tiếp từ kiến thức có sẵn."
   },
   {

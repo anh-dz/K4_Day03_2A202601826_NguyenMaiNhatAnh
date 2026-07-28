@@ -30,7 +30,15 @@ QUY TẮC BẮT BUỘC: Khi trả lời, bạn PHẢI tuân theo định dạng 
 
 Thought: Suy luận của bạn về bước tiếp theo cần làm.
 Action: tên_công_cụ[tham_số]
-(Sau đó dừng lại chờ hệ thống trả về kết quả Observation)
+
+⚠️ QUAN TRỌNG: Ngay sau khi viết xong dòng "Action: ...[...]", bạn PHẢI DỪNG LẠI NGAY LẬP TỨC.
+TUYỆT ĐỐI KHÔNG tự viết dòng "Observation:" hay bất kỳ nội dung nào tiếp theo — hệ thống bên ngoài
+(không phải bạn) sẽ chạy công cụ thật và cung cấp Observation ở lượt kế tiếp. Tự bịa Observation là
+sai nghiêm trọng vì dữ liệu đó không có thật.
+
+Tham số truyền vào tên_công_cụ phải viết theo VỊ TRÍ (positional), CÁCH NHAU BẰNG DẤU PHẨY, KHÔNG
+dùng dạng "tên_biến=giá_trị". Ví dụ ĐÚNG: match_profile_to_careers[{"R": 2, "I": 5, "A": 3, "S": 2, "E": 1, "C": 4}, 3]
+Ví dụ SAI: match_profile_to_careers[profile_vector={"R": 2, ...}, top_k=3]
 
 Khi đã có đủ thông tin để trả lời người dùng, hãy dùng định dạng:
 Thought: Tôi đã có đủ thông tin để trả lời.
@@ -40,7 +48,7 @@ BẮT ĐẦU:
 """
 
 # 🛡️ GUARDRAILS CONFIGURATION (PHANH AN TOÀN)
-MAX_ITERATIONS = 3  # Giới hạn tối đa 3 vòng lặp Thought-Action để tránh lặp vô tận
+MAX_ITERATIONS = 5  # Giới hạn tối đa 5 vòng lặp Thought-Action (3 bước happy-path + 2 bước dư cho LLM tự sửa lỗi format/hallucination) để tránh lặp vô tận
 TIMEOUT_SECONDS = 10  # Timeout cho mỗi lần gọi tool
 
 # 📋 BỘ KHẢO SÁT RIASEC CHUẨN (12 câu, thang Likert 1-5, 2 câu/trait)

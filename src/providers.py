@@ -135,6 +135,14 @@ class MockProvider(BaseLLMProvider):
     """Offline Mock Provider (Cho bài test không cần kết nối API)"""
     def generate(self, prompt: str, system_prompt: str = "") -> str:
         text = prompt.lower()
+
+        # Đã có Observation chứa profile_vector (bước 1 đã chạy) -> kết luôn cho demo offline gọn.
+        if "observation" in text and "profile_vector" in text:
+            return (
+                "Thought: Tôi đã có đủ thông tin để trả lời.\n"
+                "Final Answer: (Mock) Dựa trên hồ sơ tính cách, nghề phù hợp nhất với bạn là Công nghệ thông tin."
+            )
+
         if "tính cách" in text or "riasec" in text or "phù hợp" in text:
             return (
                 "Thought: Cần chấm trắc nghiệm RIASEC để hiểu tính cách người dùng.\n"
