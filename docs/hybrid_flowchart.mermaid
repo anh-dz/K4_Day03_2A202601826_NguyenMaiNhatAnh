@@ -1,0 +1,18 @@
+flowchart TD
+    A([Người dùng nhập câu hỏi]) --> B{Câu hỏi có cần
+sử dụng tool / nhiều bước suy luận?}
+
+    B -- Không / Đơn giản --> C[Chatbot path]
+    C --> C1[LLM sinh phản hồi trực tiếp]
+    C1 --> D([Trả lời người dùng])
+
+    B -- Có / Phức tạp --> E[ReAct Agent path]
+    E --> E1[Phân tích mục tiêu]
+    E1 --> E2[Thought]
+    E2 --> E3[Action: gọi tool]
+    E3 --> E4[Observation: nhận kết quả]
+    E4 --> E5{Đã đủ thông tin để trả lời?}
+
+    E5 -- Không --> E2
+    E5 -- Có --> E6[Final Answer]
+    E6 --> D
