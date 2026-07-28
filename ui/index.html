@@ -195,20 +195,8 @@
                         <span class="text-[12px] text-on-surface-variant ml-1 font-medium">10:00 AM</span>
                     </div>
                 </div>
-                
-                <!-- AI Message 2 -->
-                <div class="flex gap-sm max-w-[90%] md:max-w-[85%] message-in self-start" style="animation-delay: 0.15s;">
-                    <div class="w-9 h-9 rounded-full bg-secondary-container flex items-center justify-center shrink-0 mt-1 text-on-secondary-container shadow-sm border border-secondary-fixed-dim/30">
-                        <span class="material-symbols-outlined fill text-[20px]" data-icon="smart_toy">smart_toy</span>
-                    </div>
-                    <div class="flex flex-col gap-1 items-start">
-                        <div class="bg-surface-container-lowest border border-outline-variant p-4 rounded-[20px] rounded-tl-[4px] shadow-sm">
-                            <p class="text-[15px] md:text-[16px] text-on-surface leading-relaxed">Hôm nay tôi có thể giúp gì cho định hướng nghề nghiệp của bạn? Bạn đang quan tâm đến lĩnh vực nào hay cần cải thiện kỹ năng gì không?</p>
-                        </div>
-                        <span class="text-[12px] text-on-surface-variant ml-1 font-medium">10:00 AM</span>
-                    </div>
-                </div>
-                
+                <!-- Các câu hỏi khảo sát RIASEC và chat tự do sau đó được thêm động bằng JS (xem startSurvey()) -->
+
             </div>
         </section>
 
@@ -216,21 +204,9 @@
         <footer class="px-md md:px-lg pb-md md:pb-lg pt-2 flex flex-col items-center w-full bg-gradient-to-t from-background via-background to-transparent">
             <div class="w-full max-w-4xl flex flex-col items-center">
                 
-                <!-- Quick Reply Chips -->
-                <div id="quick-replies" class="flex gap-sm mb-md overflow-x-auto no-scrollbar w-full pb-2 snap-x transition-all">
-                    <button onclick="sendQuickReply(this.innerText)" class="snap-start px-4 py-2 bg-surface-container-lowest border border-outline-variant rounded-full text-[14px] text-on-surface-variant hover:bg-primary-container hover:text-on-primary-container hover:border-transparent transition-all whitespace-nowrap active:scale-95 shadow-sm">
-                        Tìm hiểu ngành IT
-                    </button>
-                    <button onclick="sendQuickReply(this.innerText)" class="snap-start px-4 py-2 bg-surface-container-lowest border border-outline-variant rounded-full text-[14px] text-on-surface-variant hover:bg-primary-container hover:text-on-primary-container hover:border-transparent transition-all whitespace-nowrap active:scale-95 shadow-sm">
-                        Kỹ năng mềm cần thiết
-                    </button>
-                    <button onclick="sendQuickReply(this.innerText)" class="snap-start px-4 py-2 bg-surface-container-lowest border border-outline-variant rounded-full text-[14px] text-on-surface-variant hover:bg-primary-container hover:text-on-primary-container hover:border-transparent transition-all whitespace-nowrap active:scale-95 shadow-sm">
-                        Tư vấn viết CV
-                    </button>
-                    <button onclick="sendQuickReply(this.innerText)" class="snap-start px-4 py-2 bg-surface-container-lowest border border-outline-variant rounded-full text-[14px] text-on-surface-variant hover:bg-primary-container hover:text-on-primary-container hover:border-transparent transition-all whitespace-nowrap active:scale-95 shadow-sm">
-                        Lộ trình Frontend
-                    </button>
-                </div>
+                <!-- Quick Reply Chips: mặc định trống, JS nạp chip khảo sát RIASEC (1-5) khi tải trang,
+                     sau đó đổi sang chip chủ đề gợi ý khi khảo sát xong (xem startSurvey()/finishSurvey()) -->
+                <div id="quick-replies" class="flex gap-sm mb-md overflow-x-auto no-scrollbar w-full pb-2 snap-x transition-all"></div>
                 
                 <!-- Message Box -->
                 <div class="relative bg-surface-container-lowest border border-outline-variant rounded-[24px] p-1.5 flex items-end gap-1 shadow-sm focus-within:ring-2 focus-within:ring-primary/50 focus-within:border-primary transition-all w-full">
@@ -260,6 +236,10 @@
     </main>
 
     <script>
+        // GFM "breaks: true" -> xuống dòng đơn (\n) trong câu trả lời cũng hiển thị xuống dòng
+        // thật, thay vì mặc định CommonMark chỉ coi 1 dòng mới là khoảng trắng.
+        marked.setOptions({ breaks: true });
+
         const input = document.getElementById('chat-input');
         const sendBtn = document.getElementById('send-btn');
         const container = document.getElementById('chat-container');
@@ -279,35 +259,150 @@
             }
         });
 
-        // Send message function
-        function sendMessage(overrideText) {
-            const message = (typeof overrideText === 'string') ? overrideText.trim() : input.value.trim();
-            if (message === '') return;
-            
-            // Append User Message
-            const userMsg = `
+        // ============================================================
+        // 📋 KHẢO SÁT RIASEC MẶC ĐỊNH (chạy trước khi vào chat tự do)
+        // Lý do: để LLM tự đoán điểm tính cách qua hội thoại tự do sẽ không xác định
+        // (deterministic) được — dùng đúng bộ câu hỏi chuẩn từ backend (RIASEC_SURVEY_QUESTIONS)
+        // và gộp điểm y hệt logic collect_riasec_answers() ở bản CLI.
+        // ============================================================
+        let surveyQuestions = [];
+        let surveyIndex = 0;
+        let surveyRawScores = [];   // [{trait, score}, ...]
+        let surveyActive = false;
+        let riasecAnswers = null;   // {"R": 2, "I": 5, ...} sau khi khảo sát xong
+
+        function addBotBubble(text) {
+            const html = `
+                <div class="flex gap-sm max-w-[90%] md:max-w-[85%] message-in self-start">
+                    <div class="w-9 h-9 rounded-full bg-secondary-container flex items-center justify-center shrink-0 mt-1 text-on-secondary-container shadow-sm border border-secondary-fixed-dim/30">
+                        <span class="material-symbols-outlined fill text-[20px]" data-icon="smart_toy">smart_toy</span>
+                    </div>
+                    <div class="flex flex-col gap-1 items-start">
+                        <div class="bg-surface-container-lowest border border-outline-variant p-4 rounded-[20px] rounded-tl-[4px] shadow-sm">
+                            <p class="text-[15px] md:text-[16px] text-on-surface leading-relaxed">${text}</p>
+                        </div>
+                        <span class="text-[12px] text-on-surface-variant ml-1 font-medium">${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                    </div>
+                </div>
+            `;
+            container.insertAdjacentHTML('beforeend', html);
+            wrapper.scrollTop = wrapper.scrollHeight;
+        }
+
+        function addUserBubble(text) {
+            const html = `
                 <div class="flex gap-sm max-w-[90%] md:max-w-[85%] self-end flex-row-reverse message-in">
                     <div class="w-9 h-9 rounded-full bg-primary flex items-center justify-center shrink-0 mt-1 text-on-primary font-bold text-[14px] shadow-sm">S</div>
                     <div class="flex flex-col gap-1 items-end">
                         <div class="bg-primary text-on-primary p-4 rounded-[20px] rounded-tr-[4px] shadow-sm">
-                            <p class="text-[15px] md:text-[16px] leading-relaxed whitespace-pre-wrap">${message}</p>
+                            <p class="text-[15px] md:text-[16px] leading-relaxed whitespace-pre-wrap">${text}</p>
                         </div>
                         <span class="text-[12px] text-on-surface-variant mr-1 font-medium">${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                     </div>
                 </div>
             `;
-            
-            container.insertAdjacentHTML('beforeend', userMsg);
-            
+            container.insertAdjacentHTML('beforeend', html);
+            wrapper.scrollTop = wrapper.scrollHeight;
+        }
+
+        function setInputEnabled(enabled) {
+            input.disabled = !enabled;
+            input.placeholder = enabled ? "Nhập câu hỏi của bạn..." : "Vui lòng chọn điểm 1-5 phía trên để trả lời khảo sát...";
+        }
+
+        function renderQuickReplyChips(items, onClick) {
+            const el = document.getElementById('quick-replies');
+            el.innerHTML = '';
+            items.forEach(label => {
+                const btn = document.createElement('button');
+                btn.className = 'snap-start px-4 py-2 bg-surface-container-lowest border border-outline-variant rounded-full text-[14px] text-on-surface-variant hover:bg-primary-container hover:text-on-primary-container hover:border-transparent transition-all whitespace-nowrap active:scale-95 shadow-sm';
+                btn.innerText = label;
+                btn.onclick = () => onClick(label);
+                el.appendChild(btn);
+            });
+        }
+
+        function aggregateRiasecAnswers(rawScores) {
+            const byTrait = {};
+            rawScores.forEach(({ trait, score }) => {
+                (byTrait[trait] = byTrait[trait] || []).push(score);
+            });
+            const result = {};
+            for (const trait in byTrait) {
+                const arr = byTrait[trait];
+                result[trait] = Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
+            }
+            return result;
+        }
+
+        async function startSurvey() {
+            surveyActive = true;
+            setInputEnabled(false);
+            try {
+                const res = await fetch('/api/survey-questions');
+                const data = await res.json();
+                surveyQuestions = data.questions || [];
+            } catch (e) {
+                console.error('Không tải được câu hỏi khảo sát:', e);
+            }
+
+            if (!surveyQuestions.length) {
+                // Backend chưa sẵn sàng / lỗi -> bỏ qua khảo sát, cho chat tự do luôn
+                surveyActive = false;
+                setInputEnabled(true);
+                return;
+            }
+
+            addBotBubble("Trước khi tư vấn, hãy trả lời nhanh 12 câu khảo sát RIASEC để mình hiểu tính cách của bạn nhé! Chọn điểm từ 1 (rất không đồng ý) đến 5 (rất đồng ý).");
+            askNextSurveyQuestion();
+        }
+
+        function askNextSurveyQuestion() {
+            if (surveyIndex >= surveyQuestions.length) {
+                finishSurvey();
+                return;
+            }
+            const q = surveyQuestions[surveyIndex];
+            addBotBubble(`Câu ${surveyIndex + 1}/${surveyQuestions.length}: ${q.question}`);
+            renderQuickReplyChips(['1', '2', '3', '4', '5'], (label) => answerSurveyQuestion(parseInt(label, 10)));
+        }
+
+        function answerSurveyQuestion(score) {
+            const q = surveyQuestions[surveyIndex];
+            surveyRawScores.push({ trait: q.trait, score });
+            addUserBubble(String(score));
+            surveyIndex++;
+            askNextSurveyQuestion();
+        }
+
+        function finishSurvey() {
+            riasecAnswers = aggregateRiasecAnswers(surveyRawScores);
+            surveyActive = false;
+            addBotBubble("Cảm ơn bạn! Mình đã ghi nhận kết quả khảo sát. Giờ bạn có thể hỏi mình bất cứ điều gì về định hướng nghề nghiệp nhé.");
+            // Chỉ giữ gợi ý đúng phạm vi ĐỊNH HƯỚNG nghề nghiệp (khớp 3 tool hiện có:
+            // run_personality_assessment, match_profile_to_careers, get_career_detail) —
+            // không gợi ý các chủ đề ngoài phạm vi như tư vấn CV, lộ trình học...
+            renderQuickReplyChips(
+                ["Nghề nào phù hợp với tính cách của tôi?", "Xem chi tiết nghề được gợi ý"],
+                (label) => sendQuickReply(label)
+            );
+            setInputEnabled(true);
+        }
+
+        // Send message function
+        function sendMessage(overrideText) {
+            if (surveyActive) return; // khi đang khảo sát, chỉ nhận trả lời qua chip 1-5
+            const message = (typeof overrideText === 'string') ? overrideText.trim() : input.value.trim();
+            if (message === '') return;
+
+            addUserBubble(message);
+
             // Reset input
             input.value = '';
             input.style.height = 'auto';
             sendBtn.classList.add('bg-surface-container-high', 'text-on-surface-variant');
             sendBtn.classList.remove('bg-primary', 'text-on-primary', 'shadow-md', 'hover:brightness-110', 'active:scale-95');
-            
-            // Scroll to bottom
-            wrapper.scrollTop = wrapper.scrollHeight;
-            
+
             // Fetch AI response
             fetchAIResponse(message);
         }
@@ -339,7 +434,7 @@
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ message: userMessage })
+                    body: JSON.stringify({ message: userMessage, answers: riasecAnswers })
                 });
                 
                 const reader = response.body.getReader();
@@ -347,20 +442,25 @@
                 let done = false;
                 let fullAnswer = "";
                 let isFirstChunk = true;
-                
+                let buffer = ''; // giữ phần dòng SSE chưa đọc hết giữa 2 lần reader.read()
+
                 const contentDiv = document.getElementById(`content-${messageId}`);
                 const timeSpan = document.getElementById(`time-${messageId}`);
-                
+
                 while (!done) {
                     const { value, done: readerDone } = await reader.read();
                     if (readerDone) {
                         done = true;
                         break;
                     }
-                    
-                    const chunkStr = decoder.decode(value, { stream: true });
-                    const lines = chunkStr.split('\\n');
-                    
+
+                    // Nối phần dữ liệu mới vào buffer rồi tách theo dòng THẬT ('\n', không phải
+                    // chuỗi 2 ký tự '\\n'). Dòng cuối có thể chưa đầy đủ (bị cắt giữa 2 lần read)
+                    // nên giữ lại trong buffer cho vòng lặp kế tiếp thay vì parse dở dang.
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+
                     for (const line of lines) {
                         if (line.startsWith('data: ')) {
                             try {
@@ -385,7 +485,7 @@
                         }
                     }
                 }
-                
+
                 timeSpan.classList.remove('hidden');
                 
             } catch (error) {
@@ -426,6 +526,9 @@
                 sendMessage();
             }
         });
+
+        // Mặc định: bắt đầu khảo sát RIASEC ngay khi vào trang, trước khi cho chat tự do.
+        startSurvey();
     </script>
 </body>
 </html>

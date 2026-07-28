@@ -34,6 +34,31 @@ class GeminiProvider(BaseLLMProvider):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
         self.model_name = model or os.getenv("LLM_MODEL") or "gemini-2.5-flash"
         
+    def _build_config(self):
+        """
+        Các model Gemini "thinking" (2.5/3.x flash trở lên) mặc định dành 1 phần
+        max_output_tokens cho suy luận ẩn (không hiển thị). Nếu không giới hạn rõ,
+        với prompt dài (scratchpad ReAct tích lũy nhiều bước) model có thể dùng hết
+        token cho "thinking" và trả về response.text RỖNG — làm ReAct Agent tốn oan
+        1 bước Guardrail mỗi lần gặp. Tắt thinking (budget=0) và đặt max_output_tokens
+        đủ lớn để ưu tiên trả lời đúng định dạng Thought/Action ngắn gọn, xác định.
+        """
+        from google.genai import types
+
+        # Các model "-lite" không có thinking để tắt -> gửi thinking_config sẽ bị
+        # API từ chối với lỗi 400 INVALID_ARGUMENT. Chỉ áp dụng cho model "thinking" thật.
+        if "lite" in self.model_name.lower():
+            return types.GenerateContentConfig(max_output_tokens=2048)
+
+        try:
+            return types.GenerateContentConfig(
+                max_output_tokens=2048,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+            )
+        except Exception:
+            # Model/SDK version không hỗ trợ thinking_config -> vẫn giới hạn max_output_tokens
+            return types.GenerateContentConfig(max_output_tokens=2048)
+
     def generate(self, prompt: str, system_prompt: str = "") -> str:
         if not self.api_key or self.api_key == "your_gemini_api_key_here":
             return "[Gemini Error]: Chưa cấu hình GEMINI_API_KEY trong file .env!"
@@ -41,11 +66,24 @@ class GeminiProvider(BaseLLMProvider):
             from google import genai
             client = genai.Client(api_key=self.api_key)
             contents = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
-            response = client.models.generate_content(
-                model=self.model_name,
-                contents=contents
-            )
-            return response.text
+            config = self._build_config()
+
+            # Gemini đôi khi trả về response rỗng với finish_reason MALFORMED_RESPONSE
+            # (lỗi tạm thời/không xác định phía Google, không lặp lại theo prompt cố định).
+            # Thử lại vài lần trước khi báo lỗi, để không lãng phí bước Guardrail của ReAct Agent.
+            last_error = None
+            for attempt in range(3):
+                response = client.models.generate_content(
+                    model=self.model_name,
+                    contents=contents,
+                    config=config,
+                )
+                if response.text:
+                    return response.text
+                finish_reason = response.candidates[0].finish_reason if response.candidates else None
+                last_error = finish_reason
+
+            return f"[Gemini Error]: Model trả về câu trả lời rỗng sau 3 lần thử (finish_reason={last_error})."
         except Exception as e:
             return f"[Gemini Exception]: {str(e)}"
 
@@ -57,13 +95,24 @@ class GeminiProvider(BaseLLMProvider):
             from google import genai
             client = genai.Client(api_key=self.api_key)
             contents = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
-            response = client.models.generate_content_stream(
-                model=self.model_name,
-                contents=contents
-            )
-            for chunk in response:
-                if chunk.text:
-                    yield chunk.text
+            config = self._build_config()
+
+            # Giống generate(): nếu cả stream không có chunk nào (response rỗng do lỗi tạm
+            # thời MALFORMED_RESPONSE phía Google), thử lại tối đa 3 lần trước khi báo lỗi.
+            for attempt in range(3):
+                response = client.models.generate_content_stream(
+                    model=self.model_name,
+                    contents=contents,
+                    config=config,
+                )
+                got_any_chunk = False
+                for chunk in response:
+                    if chunk.text:
+                        got_any_chunk = True
+                        yield chunk.text
+                if got_any_chunk:
+                    return
+            return
         except Exception as e:
             yield f"[Gemini Exception]: {str(e)}"
 

@@ -7,6 +7,7 @@ from flask_cors import CORS
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from app import run_react_agent_stream
+from prompts import RIASEC_SURVEY_QUESTIONS
 from providers import get_llm_provider
 
 # Trỏ Flask tới thư mục ui/ để phục vụ file HTML
@@ -24,19 +25,34 @@ def index():
     """Phục vụ file giao diện ChatUI"""
     return send_from_directory(app.static_folder, 'index.html')
 
+@app.route('/api/survey-questions', methods=['GET'])
+def survey_questions():
+    """
+    Trả về bộ khảo sát RIASEC chuẩn (RIASEC_SURVEY_QUESTIONS trong prompts.py) để
+    UI hỏi tuần tự cho người dùng TRƯỚC khi vào chat tự do — cùng một nguồn dữ liệu
+    xác định (deterministic) mà bản CLI (collect_riasec_answers) đang dùng, tránh
+    để LLM tự đoán điểm tính cách qua hội thoại tự do.
+    """
+    return jsonify({'questions': RIASEC_SURVEY_QUESTIONS})
+
+
 @app.route('/api/chat', methods=['POST'])
 def chat():
     """API nhận câu hỏi và trả về phản hồi từ ReAct Agent"""
     data = request.json
     if not data or 'message' not in data:
         return jsonify({'error': 'Vui lòng cung cấp tham số message'}), 400
-    
+
     user_message = data['message']
-    print(f"\n🌐 [Web API] Người dùng hỏi: {user_message}")
-    
+    # answers: kết quả khảo sát RIASEC đã gộp điểm, do UI gửi lên sau khi người
+    # dùng trả lời xong 12 câu quick-reply (xem ui/index.html). Có thể là None
+    # nếu người dùng bỏ qua/khảo sát chưa xong.
+    answers = data.get('answers')
+    print(f"\n🌐 [Web API] Người dùng hỏi: {user_message} (answers={answers})")
+
     try:
         # Gọi run_react_agent_stream và trả về luồng SSE
-        return Response(stream_with_context(run_react_agent_stream(user_message, provider, answers=None)), mimetype='text/event-stream')
+        return Response(stream_with_context(run_react_agent_stream(user_message, provider, answers=answers)), mimetype='text/event-stream')
     except Exception as e:
         print(f"❌ [Web API] Lỗi: {e}")
         return jsonify({'error': f'Xin lỗi, đã xảy ra lỗi hệ thống: {str(e)}'}), 500
