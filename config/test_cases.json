@@ -2,31 +2,109 @@
   {
     "id": 1,
     "category": "🟢 Đơn giản (Chỉ cần LLM)",
+    "priority": "P2 - Thấp",
+    "precondition": "Không có",
     "question": "Ngành Công nghệ thông tin thường làm những công việc gì?",
-    "expected_behavior": "Chatbot trả lời trực tiếp từ kiến thức có sẵn."
+    "tools_called": "Không gọi tool nào",
+    "expected_behavior": "PASS nếu chatbot trả lời trực tiếp bằng kiến thức nền mà không gọi tool nào."
   },
   {
     "id": 2,
     "category": "🟢 Đơn giản (Chỉ cần LLM)",
+    "priority": "P2 - Thấp",
+    "precondition": "Không có",
     "question": "Cho tôi 3 lời khuyên để định hướng nghề nghiệp phù hợp với bản thân.",
-    "expected_behavior": "Chatbot trả lời trực tiếp từ kiến thức có sẵn."
+    "tools_called": "Không gọi tool nào",
+    "expected_behavior": "PASS nếu chatbot đưa ra lời khuyên tổng quát, không bắt buộc gọi tool."
   },
   {
     "id": 3,
     "category": "🟡 Multi-step (Cần Tool)",
-    "question": "Tôi thích phân tích dữ liệu và giải quyết vấn đề logic, nghề nào phù hợp với tôi?",
-    "expected_behavior": "Agent gọi tool run_personality_assessment rồi match_profile_to_careers để xếp hạng nghề phù hợp."
+    "priority": "P0 - Cao",
+    "precondition": "Người dùng cung cấp đáp án trắc nghiệm RIASEC ở dạng dict",
+    "question": "Đây là câu trả lời trắc nghiệm tính cách của tôi: {\"R\":2, \"I\":5, \"A\":3, \"S\":2, \"E\":1, \"C\":4}. Bạn phân tích giúp tôi xem tôi thuộc kiểu người nào?",
+    "tools_called": "run_personality_assessment(answers)",
+    "expected_behavior": "PASS nếu agent gọi đúng 1 tool run_personality_assessment với answers phù hợp và dùng kết quả để phân tích."
   },
   {
     "id": 4,
     "category": "🟡 Multi-step (Cần gọi 2 Tools)",
-    "question": "Nghề phù hợp nhất với tính cách của tôi là gì, và cho tôi biết chi tiết (mức lương, kỹ năng cần có) về nghề đó?",
-    "expected_behavior": "Agent gọi run_personality_assessment -> match_profile_to_careers để tìm nghề phù hợp nhất, sau đó gọi get_career_detail để lấy chi tiết."
+    "priority": "P0 - Cao",
+    "precondition": "Người dùng vừa cung cấp câu trả lời trắc nghiệm ở lượt liền trước",
+    "question": "Dựa trên kết quả trắc nghiệm tính cách tôi vừa cung cấp ở trên, bạn gợi ý giúp tôi các nghề phù hợp nhất nhé.",
+    "tools_called": "run_personality_assessment(answers) → match_profile_to_careers(profile_vector, top_k)",
+    "expected_behavior": "PASS nếu agent gọi run_personality_assessment trước, sau đó gọi match_profile_to_careers bằng vector nhận được và trả về ranked list."
   },
   {
     "id": 5,
+    "category": "🟡 Multi-step (Cần Tool)",
+    "priority": "P1 - Trung bình",
+    "precondition": "Không có",
+    "question": "Cho tôi biết chi tiết về nghề Công nghệ thông tin: mức lương, triển vọng phát triển và yêu cầu học vấn.",
+    "tools_called": "get_career_detail(career_id)",
+    "expected_behavior": "PASS nếu agent gọi get_career_detail với career_id phù hợp và trả lời dựa trên dữ liệu nghề này."
+  },
+  {
+    "id": 6,
     "category": "🔴 Edge Case (Bẫy Guardrail)",
+    "priority": "P0 - Cao",
+    "precondition": "Không có",
     "question": "Cho tôi biết chi tiết về nghề Phi Hành Gia Vũ Trụ.",
-    "expected_behavior": "Tool get_career_detail báo lỗi vì không có trong dữ liệu, Guardrail ngắt sau 3 bước và trả về thông báo lịch sự."
+    "tools_called": "get_career_detail(career_id)",
+    "expected_behavior": "PASS nếu agent gọi get_career_detail, nhận lỗi do nghề không tồn tại, và trả lời lịch sự thay vì bịa thông tin."
+  },
+  {
+    "id": 7,
+    "category": "🟢 Đơn giản (Chỉ cần LLM)",
+    "priority": "P2 - Thấp",
+    "precondition": "Không có",
+    "question": "Tôi thấy mình thích giải quyết vấn đề và làm việc với công nghệ. Bạn có thể gợi ý cho tôi một vài hướng nghề phù hợp không?",
+    "tools_called": "Không gọi tool nào",
+    "expected_behavior": "PASS nếu chatbot đưa ra gợi ý nghề phù hợp bằng suy luận ngôn ngữ và không tự gọi tool."
+  },
+  {
+    "id": 8,
+    "category": "🟡 Multi-step (Cần Tool)",
+    "priority": "P0 - Cao",
+    "precondition": "Người dùng cung cấp vector RIASEC đầy đủ",
+    "question": "Tôi có điểm R=2, I=5, A=3, S=2, E=1, C=4. Bạn hãy cho tôi biết nghề phù hợp nhất với hồ sơ này.",
+    "tools_called": "run_personality_assessment(answers) → match_profile_to_careers(profile_vector, top_k)",
+    "expected_behavior": "PASS nếu agent gọi đúng 2 tool theo đúng trình tự và trả về nghề phù hợp từ kết quả match."
+  },
+  {
+    "id": 9,
+    "category": "🟡 Multi-step (Cần Tool)",
+    "priority": "P1 - Trung bình",
+    "precondition": "Không có",
+    "question": "Cho tôi biết chi tiết về nghề Công nghệ thông tin gồm mức lương, triển vọng và yêu cầu học vấn.",
+    "tools_called": "get_career_detail(career_id)",
+    "expected_behavior": "PASS nếu agent gọi đúng 1 tool get_career_detail và trả lời đủ 3 khía cạnh từ dữ liệu nghề."
+  },
+  {
+    "id": 10,
+    "category": "🔴 Edge Case (Bẫy Guardrail)",
+    "priority": "P0 - Cao",
+    "precondition": "Không có",
+    "question": "Cho tôi biết chi tiết về nghề 'Nhà tiên tri công nghệ'.",
+    "tools_called": "get_career_detail(career_id)",
+    "expected_behavior": "PASS nếu agent nhận diện nghề không tồn tại, không bịa thông tin và trả lời lịch sự rằng chưa có dữ liệu."
+  },
+  {
+    "id": 11,
+    "category": "🔴 Edge Case (Bẫy Guardrail)",
+    "priority": "P1 - Trung bình",
+    "precondition": "Người dùng chỉ cung cấp một phần dữ liệu RIASEC",
+    "question": "Tôi chỉ trả lời được phần Realistic, còn các phần khác chưa làm. Bạn có thể chấm cho tôi được không?",
+    "tools_called": "Không gọi run_personality_assessment với dữ liệu không đầy đủ",
+    "expected_behavior": "PASS nếu agent nhận ra dữ liệu chưa đủ, không tạo profile_vector giả và yêu cầu người dùng hoàn thiện trước khi phân tích."
+  },
+  {
+    "id": 12,
+    "category": "🟢 Đơn giản (Chỉ cần LLM)",
+    "priority": "P2 - Thấp",
+    "precondition": "Không có",
+    "question": "Tôi đang phân vân giữa học sâu về công nghệ và làm việc trong môi trường kinh doanh. Bạn tư vấn giúp tôi nên chọn hướng nào?",
+    "tools_called": "Không gọi tool nào",
+    "expected_behavior": "PASS nếu chatbot so sánh hai hướng một cách hợp lý và đưa ra gợi ý kèm lý do."
   }
 ]
