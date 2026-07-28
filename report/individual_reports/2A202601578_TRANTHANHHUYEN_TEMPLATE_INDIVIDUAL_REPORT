@@ -1,0 +1,42 @@
+# Individual Report: Lab 3 - Chatbot vs ReAct Agent
+
+- **Student Name**: Trần Thanh Huyền
+- **Student ID**: 2A202601578
+- **Date**: 2026-07-28
+
+---
+
+## I. Technical Contribution (15 Points)
+
+Trong bài lab này, tôi đảm nhận vai trò Role 5: Observability & Reviewer. Vai trò của tôi không trực tiếp xây dựng tool hay vòng lặp ReAct, mà tập trung vào việc quan sát, đánh giá và ghi nhận trace log nhằm chứng minh rằng bài toán này thực sự phù hợp để sử dụng agent thay vì chatbot thông thường.
+
+- **Modules Implemented**: Tôi đóng góp vào tài liệu đánh giá và observability của hệ thống, đặc biệt là [docs/trace_eval.md](../../docs/trace_eval.md) và [docs/hybrid_flowchart.mermaid](../../docs/hybrid_flowchart.mermaid).
+- **Code Highlights**: Tôi đã xây dựng và hoàn thiện bảng Scoring Matrix cho 4 tiêu chí Agentic Fit, ghi lại trace thực tế của ReAct Agent trong quá trình suy luận Thought → Action → Observation, và phân tích các trường hợp edge case liên quan đến Guardrail. Tôi cũng hỗ trợ làm rõ sự khác biệt giữa chatbot baseline và ReAct agent khi xử lý cùng một câu hỏi.
+- **Documentation**: Tôi giải thích cách observability giúp nhóm hiểu rõ liệu hệ thống có thực sự cần tool và multi-step reasoning hay không. Các trace ghi nhận được là bằng chứng để chứng minh agent vượt trội hơn chatbot trong các nhiệm vụ cần công cụ và suy luận nhiều bước.
+
+---
+
+## II. Debugging Case Study (10 Points)
+
+- **Problem Description**: Trong quá trình test, agent đôi khi không tuân đúng định dạng phản hồi, ví dụ tự thêm Observation hoặc Final Answer giả ngay sau một Action thật. Điều này làm cho luồng phản hồi trở nên rối và khó đánh giá đúng sai.
+- **Log Source**: Trace được ghi nhận trong [docs/trace_eval.md](../../docs/trace_eval.md), bao gồm ví dụ về hành vi tool lỗi khi gọi nghề không tồn tại và trường hợp Guardrail kích hoạt sau khi vượt quá số vòng lặp cho phép.
+- **Diagnosis**: Nguyên nhân chủ yếu đến từ việc LLM không luôn tuân theo prompt bắt buộc về định dạng Thought/Action/Final Answer. Ngoài ra, vì không có stop-sequence rõ ràng, LLM có thể tự bịa nội dung tiếp theo sau Action, khiến hệ thống dễ nhầm lẫn giữa phản hồi thật và phản hồi giả.
+- **Solution**: Tôi đề xuất giải pháp ưu tiên Action thật, cắt bỏ phần bịa phía sau trước khi đưa vào context, đồng thời giữ Guardrail ở mức tối đa 5 bước để tránh lặp vô tận. Đây là một ví dụ điển hình cho việc observability giúp phát hiện sự cố và điều chỉnh hệ thống.
+
+---
+
+## III. Personal Insights: Chatbot vs ReAct (10 Points)
+
+1. **Reasoning**: Khối Thought giúp agent suy luận có cấu trúc hơn so với chatbot vì nó buộc hệ thống phải quyết định bước tiếp theo một cách có chủ đích, thay vì trả lời trực tiếp bằng ngôn ngữ tự nhiên.
+2. **Reliability**: Agent không phải lúc nào cũng tốt hơn chatbot. Với các câu hỏi đơn giản, chatbot thường phản hồi nhanh và đủ tốt; agent có thể trở nên dài dòng hoặc quá mức vì phải gọi tool. Tuy nhiên, với các câu hỏi multi-step, agent rõ ràng vượt trội hơn.
+3. **Observation**: Kết quả từ Observation là yếu tố then chốt. Nó không chỉ cung cấp dữ liệu cho câu trả lời mà còn quyết định bước tiếp theo của agent. Chính vì vậy, môi trường phản hồi thực tế giúp agent điều chỉnh hành vi hiệu quả hơn chatbot thuần.
+
+---
+
+## IV. Future Improvements (5 Points)
+
+- **Scalability**: Nên tích hợp hệ thống logging và telemetry chuẩn để ghi thời gian phản hồi, token sử dụng, số vòng lặp và kết quả từng tool call. Điều này giúp đánh giá hiệu năng hệ thống một cách chuyên nghiệp.
+- **Safety**: Có thể thêm một layer kiểm tra trung gian (supervisor/validator) để xác nhận Action và Observation trước khi agent tiếp tục vòng lặp.
+- **Performance**: Với hệ thống lớn hơn, nên dùng cơ chế cache cho các tool response lặp lại và chuẩn hóa trace dưới dạng JSON để dễ phân tích và giám sát.
+
+---
