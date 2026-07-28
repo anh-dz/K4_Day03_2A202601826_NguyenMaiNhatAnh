@@ -1,5 +1,6 @@
 
 
+
 """
 🛠️ TOOL REGISTRY & SCHEMAS
 Chủ đề: CHATBOT ĐỊNH HƯỚNG SỰ NGHIỆP
@@ -15,7 +16,8 @@ Mục tiêu:
 
 import json
 import re
-from typing import Dict, List, Any
+from dataclasses import dataclass, field
+from typing import Dict, List, Any, Optional, Union
 
 
 # ============================================================
@@ -224,7 +226,177 @@ MENTOR_PROGRAM_DB = {
 }
 
 
-USER_PROFILE_STORE = {}
+
+@dataclass
+class UserProfile:
+    """
+    Cấu trúc dữ liệu hồ sơ người dùng cho chatbot định hướng nghề nghiệp.
+
+    Attributes:
+        user_id (str):
+            ID định danh duy nhất của người dùng.
+
+        interests (List[str]):
+            Danh sách sở thích hoặc lĩnh vực người dùng quan tâm.
+            Ví dụ: ["AI", "Data", "Lập trình"]
+
+        expected_salary (Optional[Union[int, float, str]]):
+            Mức lương mong muốn của người dùng.
+            Có thể là số hoặc chuỗi.
+            Ví dụ: 20000000 hoặc "20 triệu/tháng"
+
+        preferred_location (Optional[str]):
+            Địa điểm làm việc mong muốn.
+            Ví dụ: "Hà Nội", "TP.HCM", "Đà Nẵng"
+
+        avoid_industries (List[str]):
+            Danh sách ngành/lĩnh vực người dùng muốn tránh.
+            Ví dụ: ["Sales", "Tài chính"]
+
+        skills (List[str]):
+            Danh sách kỹ năng hiện có của người dùng.
+            Ví dụ: ["Python", "SQL", "Machine Learning"]
+
+        profile_vector (Optional[Dict[str, int]]):
+            Vector đặc điểm tính cách/nghề nghiệp theo mô hình RIASEC.
+            Ví dụ: {"R": 2, "I": 5, "A": 3, "S": 2, "E": 1, "C": 4}
+    """
+
+    user_id: str
+    interests: List[str] = field(default_factory=list)
+    expected_salary: Optional[Union[int, float, str]] = None
+    preferred_location: Optional[str] = None
+    avoid_industries: List[str] = field(default_factory=list)
+    skills: List[str] = field(default_factory=list)
+    profile_vector: Optional[Dict[str, int]] = None
+
+    def __post_init__(self):
+        """
+        Validate và chuẩn hóa dữ liệu sau khi khởi tạo object.
+        """
+
+        if not isinstance(self.user_id, str) or not self.user_id.strip():
+            raise ValueError("user_id không được rỗng")
+
+        self.user_id = self.user_id.strip()
+
+        self.interests = self._normalize_list(self.interests)
+        self.avoid_industries = self._normalize_list(self.avoid_industries)
+        self.skills = self._normalize_list(self.skills)
+
+        if self.preferred_location is not None:
+            self.preferred_location = str(self.preferred_location).strip()
+
+        if self.profile_vector is not None:
+            self._validate_profile_vector(self.profile_vector)
+
+    @staticmethod
+    def _normalize_list(value: Any) -> List[str]:
+        """
+        Chuẩn hóa dữ liệu dạng list.
+
+        Nếu value là None -> trả về list rỗng.
+        Nếu value là list -> ép từng phần tử sang string và loại bỏ chuỗi rỗng.
+        Nếu value là kiểu khác -> bọc thành list một phần tử.
+        """
+
+        if value is None:
+            return []
+
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+
+        return [str(value).strip()] if str(value).strip() else []
+
+    @staticmethod
+    def _validate_profile_vector(profile_vector: Dict[str, int]) -> None:
+        """
+        Validate vector RIASEC.
+
+        Yêu cầu:
+        - profile_vector phải là dict.
+        - Có đủ 6 trait: R, I, A, S, E, C.
+        - Mỗi điểm là số nguyên từ 0 đến 5.
+        """
+
+        if not isinstance(profile_vector, dict):
+            raise ValueError("profile_vector phải là dict")
+
+        required_traits = {"R", "I", "A", "S", "E", "C"}
+        current_traits = set(profile_vector.keys())
+
+        missing_traits = required_traits - current_traits
+        if missing_traits:
+            raise ValueError(f"profile_vector thiếu trait: {sorted(missing_traits)}")
+
+        for trait in required_traits:
+            score = profile_vector.get(trait)
+
+            if not isinstance(score, int):
+                raise ValueError(f"Điểm của trait '{trait}' phải là số nguyên")
+
+            if score < 0 or score > 5:
+                raise ValueError(f"Điểm của trait '{trait}' phải nằm trong khoảng 0 đến 5")
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Chuyển UserProfile object sang dict.
+
+        Returns:
+            Dict[str, Any]: Dữ liệu hồ sơ người dùng dạng dictionary.
+        """
+
+        return {
+            "user_id": self.user_id,
+            "interests": list(self.interests),
+            "expected_salary": self.expected_salary,
+            "preferred_location": self.preferred_location,
+            "avoid_industries": list(self.avoid_industries),
+            "skills": list(self.skills),
+            "profile_vector": dict(self.profile_vector) if self.profile_vector else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any], user_id: Optional[str] = None) -> "UserProfile":
+        """
+        Tạo UserProfile object từ dictionary.
+
+        Args:
+            data (Dict[str, Any]):
+                Dữ liệu hồ sơ người dùng dạng dict.
+
+            user_id (Optional[str]):
+                ID người dùng dự phòng nếu trong data chưa có user_id.
+
+        Returns:
+            UserProfile: Object hồ sơ người dùng.
+
+        Raises:
+            TypeError: Nếu data không phải dict.
+            ValueError: Nếu user_id rỗng hoặc profile_vector không hợp lệ.
+        """
+
+        if not isinstance(data, dict):
+            raise TypeError("data phải là dict")
+
+        resolved_user_id = str(data.get("user_id") or user_id or "").strip()
+
+        if not resolved_user_id:
+            raise ValueError("user_id không được rỗng")
+
+        return cls(
+            user_id=resolved_user_id,
+            interests=data.get("interests"),
+            expected_salary=data.get("expected_salary"),
+            preferred_location=data.get("preferred_location"),
+            avoid_industries=data.get("avoid_industries"),
+            skills=data.get("skills"),
+            profile_vector=data.get("profile_vector"),
+        )
+
+
+USER_PROFILE_STORE: Dict[str, UserProfile] = {}
+
 
 
 # ============================================================
@@ -461,17 +633,13 @@ def get_user_profile(user_id: str) -> str:
         if not isinstance(user_id, str) or not user_id.strip():
             return "LỖI: user_id phải là chuỗi không rỗng."
 
-        profile = USER_PROFILE_STORE.get(user_id, {
-            "user_id": user_id,
-            "interests": [],
-            "expected_salary": None,
-            "preferred_location": None,
-            "avoid_industries": [],
-            "skills": [],
-            "profile_vector": None,
-        })
+        profile = USER_PROFILE_STORE.get(user_id)
+        if profile is None:
+            profile = UserProfile(user_id=user_id)
+        elif isinstance(profile, dict):
+            profile = UserProfile.from_dict(profile, user_id=user_id)
 
-        return _safe_json(profile)
+        return _safe_json(profile.to_dict())
 
     except Exception as e:
         return f"LỖI: Xảy ra lỗi khi đọc hồ sơ người dùng ({e})."
@@ -526,22 +694,20 @@ def update_user_profile(user_id: str, updates: Dict[str, Any]) -> str:
         if invalid_fields:
             return f"LỖI: Trường không hợp lệ: {invalid_fields}. Trường hỗ trợ: {sorted(allowed_fields)}."
 
-        current = USER_PROFILE_STORE.get(user_id, {
-            "user_id": user_id,
-            "interests": [],
-            "expected_salary": None,
-            "preferred_location": None,
-            "avoid_industries": [],
-            "skills": [],
-            "profile_vector": None,
-        })
+        current = USER_PROFILE_STORE.get(user_id)
+        if current is None:
+            current = UserProfile(user_id=user_id)
+        elif isinstance(current, dict):
+            current = UserProfile.from_dict(current, user_id=user_id)
 
-        current.update(updates)
+        for field_name, value in updates.items():
+            setattr(current, field_name, value)
+
         USER_PROFILE_STORE[user_id] = current
 
         return _safe_json({
             "message": "Cập nhật profile thành công.",
-            "profile": current,
+            "profile": current.to_dict(),
         })
 
     except Exception as e:
