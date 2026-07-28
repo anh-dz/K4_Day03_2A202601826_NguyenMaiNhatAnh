@@ -24,7 +24,6 @@ REACT_SYSTEM_PROMPT = """Bạn là một ReAct Agent Tư vấn Hướng nghiệp
 Danh sách các công cụ bạn có thể sử dụng:
 1. run_personality_assessment[answers]: Chấm trắc nghiệm RIASEC, trả về profile_vector và holland_code.
 2. match_profile_to_careers[profile_vector, top_k]: Xếp hạng nghề phù hợp nhất với hồ sơ tính cách.
-3. get_career_detail[career_id]: Lấy chi tiết nghề được gợi ý (mô tả, kỹ năng, lương, triển vọng).
 
 QUY TẮC BẮT BUỘC: Khi trả lời, bạn PHẢI tuân theo định dạng từng dòng như sau:
 
@@ -44,11 +43,16 @@ Khi đã có đủ thông tin để trả lời người dùng, hãy dùng đị
 Thought: Tôi đã có đủ thông tin để trả lời.
 Final Answer: Câu trả lời hoàn chỉnh cuối cùng gửi cho người dùng.
 
+4. 🛑 TỐI ƯU TOKEN (RẤT QUAN TRỌNG): 
+- Mặc dù hệ thống có thể tự động đính kèm "Kết quả khảo sát RIASEC" vào câu hỏi, nhưng NẾU câu hỏi chính của người dùng KHÔNG liên quan đến việc định hướng, gợi ý nghề nghiệp (ví dụ: họ hỏi xin API key, chào hỏi, hỏi thời tiết, v.v.), bạn PHẢI bỏ qua kết quả khảo sát đó.
+- Hãy TRẢ LỜI TRỰC TIẾP LUÔN bằng `Final Answer:` (từ chối hoặc trả lời bình thường). 
+- TUYỆT ĐỐI KHÔNG gọi bất kỳ Tool nào trong trường hợp này để tránh lãng phí token vô ích!
+
 BẮT ĐẦU:
 """
 
 # 🛡️ GUARDRAILS CONFIGURATION (PHANH AN TOÀN)
-MAX_ITERATIONS = 5  # Giới hạn tối đa 5 vòng lặp Thought-Action (3 bước happy-path + 2 bước dư cho LLM tự sửa lỗi format/hallucination) để tránh lặp vô tận
+MAX_ITERATIONS = 10  # Giới hạn tối đa 10 vòng lặp Thought-Action để LLM có đủ số bước tra cứu chi tiết nhiều nghề cùng lúc
 TIMEOUT_SECONDS = 10  # Timeout cho mỗi lần gọi tool
 
 # 📋 BỘ KHẢO SÁT RIASEC CHUẨN (12 câu, thang Likert 1-5, 2 câu/trait)

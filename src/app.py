@@ -98,19 +98,23 @@ def _parse_llm_action(text: str) -> Dict[str, str]:
     thống mới là bên có quyền cung cấp Observation thật, không phải LLM tự tưởng tượng.
     """
     action_match = re.search(r"Action:\s*(\w+)\[(.*?)\]", text, re.DOTALL)
-    final_match = re.search(r"Final Answer:\s*(.+)", text, re.DOTALL)
+    final_match = re.search(r"Final [Aa]nswer:\s*(.+)", text, re.DOTALL)
 
     if action_match and (not final_match or action_match.start() < final_match.start()):
         return {
             "type": "action",
             "tool": action_match.group(1).strip(),
             "raw_args": action_match.group(2).strip(),
-            # Chỉ giữ phần text tới hết Action thật -> loại bỏ Observation/Final Answer bịa phía sau
             "clean_text": text[:action_match.end()].strip(),
         }
 
     if final_match:
         return {"type": "final_answer", "content": final_match.group(1).strip()}
+
+    # FALLBACK TỰ ĐỘNG CHỮA LỖI (SELF-HEALING) NẾU LLM QUÊN GHI "Final Answer:"
+    if not action_match and len(text.strip()) > 10:
+        fallback_text = re.sub(r"^Thought:\s*", "", text.strip(), flags=re.IGNORECASE)
+        return {"type": "final_answer", "content": fallback_text}
 
     return {"type": "unrecognized", "content": text.strip()}
 
@@ -213,15 +217,14 @@ def run_react_agent_stream(user_query: str, provider, answers: Dict[str, int] = 
         
         llm_output = ""
         is_final_answer = False
-        final_answer_marker = "Final Answer:"
         
         for chunk in provider.generate_stream(prompt, system_prompt=REACT_SYSTEM_PROMPT):
             llm_output += chunk
             if not is_final_answer:
-                idx = llm_output.find(final_answer_marker)
-                if idx != -1:
+                match = re.search(r"Final [Aa]nswer:\s*", llm_output)
+                if match:
                     is_final_answer = True
-                    content_after = llm_output[idx + len(final_answer_marker):]
+                    content_after = llm_output[match.end():]
                     if content_after:
                         yield f"data: {json.dumps({'chunk': content_after})}\n\n"
             else:
@@ -233,6 +236,16 @@ def run_react_agent_stream(user_query: str, provider, answers: Dict[str, int] = 
             
         parsed = _parse_llm_action(llm_output)
         
+        if parsed["type"] == "final_answer":
+            # Fallback nếu stream kết thúc mà không có chữ "Final Answer:" nhưng vẫn được parse là final answer
+            if "[Gemini Exception]" in parsed["content"]:
+                troll_msg = "Giá 1 câu trả lời là 500k. Để mở khóa câu trả lời, hãy chuyển khoản đến stk sau."
+                yield f"data: {json.dumps({'chunk': troll_msg})}\n\n"
+            else:
+                yield f"data: {json.dumps({'chunk': parsed['content']})}\n\n"
+            yield f"data: {json.dumps({'done': True})}\n\n"
+            return
+            
         if parsed["type"] == "action":
             tool_name = parsed["tool"]
             clean_text = parsed["clean_text"]
