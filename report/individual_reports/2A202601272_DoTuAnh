@@ -1,0 +1,267 @@
+# Individual Report: Lab 3 - Chatbot vs ReAct Agent
+
+- **Student Name**: [Đỗ Tú Anh]
+- **Student ID**: [2A202601272]
+- **Date**: [28/07/2026]
+
+---
+
+## I. Technical Contribution (15 Points)
+
+Trong Lab 3, vai trò của em là Role 2 - Tool Engineer. Nhiệm vụ chính của em là thiết kế, cài đặt và kiểm thử các deterministic tools cho đề tài Chatbot Định Hướng Sự Nghiệp trước khi tích hợp vào ReAct Agent.
+
+- **Modules Implementated**: [`src/tool.py`]
+- **Code Highlights**
+  # **Individual Report: Lab 3 - Chatbot vs ReAct Agent**
+
+- **Student Name**: Đỗ Tú Anh
+- **Student ID**: 2A202601272
+- **Date**: 28/07/2026
+
+---
+
+## **I. Technical Contribution (15 Points)**
+
+Trong Lab 3, vai trò của em là **Role 2 - Tool Engineer**. Nhiệm vụ chính của em là thiết kế, cài đặt và kiểm thử các **deterministic tools** cho đề tài **Chatbot Định Hướng Sự Nghiệp** trước khi tích hợp vào **ReAct Agent**.
+
+- **Modules Implementated**: `src/tool.py`
+
+- **Code Highlights**:
+
+```python
+def run_personality_assessment(answers: Dict[str, int]) -> str:
+    """
+    Chấm điểm trắc nghiệm định hướng nghề nghiệp theo mô hình RIASEC.
+    Input: answers dạng dict gồm các điểm R, I, A, S, E, C.
+    Output: JSON string chứa profile_vector, top_traits và holland_code.
+    Error: Trả về chuỗi "LỖI: ..." nếu input không hợp lệ.
+    """
+    try:
+        if not isinstance(answers, dict):
+            return "LỖI: answers phải là dict."
+
+        traits = ["R", "I", "A", "S", "E", "C"]
+        vector = {}
+
+        for trait in traits:
+            score = answers.get(trait, 0)
+
+            if not isinstance(score, int):
+                return f"LỖI: Điểm của '{trait}' phải là số nguyên."
+
+            if score < 0 or score > 5:
+                return f"LỖI: Điểm của '{trait}' phải nằm trong khoảng 0 đến 5."
+
+            vector[trait] = score
+
+        ranked = sorted(vector.items(), key=lambda x: x[1], reverse=True)
+        holland_code = "".join([item[0] for item in ranked[:3]])
+
+        return json.dumps({
+            "profile_vector": vector,
+            "top_traits": ranked[:3],
+            "holland_code": holland_code
+        }, ensure_ascii=False)
+
+    except Exception as e:
+        return f"LỖI: Xảy ra lỗi khi chấm trắc nghiệm ({e})."
+```
+
+```python
+def match_profile_to_careers(profile_vector: Dict[str, int], top_k: int = 3) -> str:
+    """
+    So khớp hồ sơ người dùng với các nghề nghiệp phù hợp.
+    Input: profile_vector theo RIASEC và top_k.
+    Output: JSON string chứa danh sách nghề được xếp hạng theo độ phù hợp.
+    Error: Trả về chuỗi "LỖI: ..." nếu dữ liệu đầu vào sai.
+    """
+    try:
+        traits = ["R", "I", "A", "S", "E", "C"]
+        matches = []
+
+        for career_id, career in CAREER_DB.items():
+            career_vector = career["riasec"]
+            distance = 0
+
+            for trait in traits:
+                distance += abs(profile_vector[trait] - career_vector[trait])
+
+            max_distance = 5 * len(traits)
+            similarity = round((1 - distance / max_distance) * 100, 2)
+
+            matches.append({
+                "career_id": career_id,
+                "name": career["name"],
+                "similarity_percent": similarity
+            })
+
+        matches = sorted(matches, key=lambda item: item["similarity_percent"], reverse=True)
+
+        return json.dumps({
+            "top_k": top_k,
+            "matches": matches[:top_k]
+        }, ensure_ascii=False)
+
+    except Exception as e:
+        return f"LỖI: Xảy ra lỗi khi match hồ sơ với nghề nghiệp ({e})."
+```
+
+```python
+AVAILABLE_TOOLS = {
+    "run_personality_assessment": run_personality_assessment,
+    "extract_skills_from_cv": extract_skills_from_cv,
+    "get_user_profile": get_user_profile,
+    "update_user_profile": update_user_profile,
+    "search_career_paths": search_career_paths,
+    "get_career_detail": get_career_detail,
+    "search_job_market_data": search_job_market_data,
+    "match_profile_to_careers": match_profile_to_careers,
+    "compare_careers": compare_careers,
+    "get_learning_roadmap": get_learning_roadmap,
+    "find_mentors_or_programs": find_mentors_or_programs,
+}
+```
+
+- **Documentation**:
+
+Các tool trong `src/tool.py` được thiết kế để hỗ trợ vòng lặp **ReAct** theo dạng:
+
+```text
+Thought -> Action -> Observation -> Final Answer
+```
+
+Cụ thể, khi người dùng hỏi về định hướng nghề nghiệp, Agent sẽ suy nghĩ trong bước **Thought**, sau đó chọn tool phù hợp trong **Action**, ví dụ `match_profile_to_careers` hoặc `get_career_detail`. Tool trả về kết quả ở bước **Observation**, sau đó Agent dùng kết quả này để đưa ra câu trả lời cuối cùng.
+
+Ví dụ:
+
+```text
+User: Em thích AI, biết Python và SQL thì nên theo nghề gì?
+
+Thought: Người dùng có kỹ năng liên quan đến AI và dữ liệu, cần tìm nghề phù hợp.
+Action: search_career_paths("AI Python SQL", {})
+Observation: Trả về các nghề liên quan như AI Engineer, Data Engineer.
+
+Thought: Cần so khớp hồ sơ với nghề phù hợp.
+Action: match_profile_to_careers(profile_vector, 3)
+Observation: Trả về top nghề phù hợp nhất.
+
+Final Answer: Gợi ý người dùng cân nhắc AI Engineer hoặc Data Engineer.
+```
+
+---
+
+## **II. Debugging Case Study (10 Points)**
+
+*Analyze a specific failure event you encountered during the lab using the logging system.*
+
+- **Problem Description**:
+
+Trong quá trình test, Agent gọi tool với một nghề không tồn tại trong mock database:
+
+```text
+Action: get_career_detail("phi_hanh_gia")
+```
+
+Do nghề `"phi_hanh_gia"` chưa có trong `CAREER_DB`, nếu tool không xử lý lỗi thì chương trình có thể bị crash hoặc ReAct Agent không biết nên phản hồi thế nào.
+
+- **Log Source**:
+
+```text
+[2026-07-28 16:20:11] USER: Tôi muốn làm phi hành gia thì cần học gì?
+[2026-07-28 16:20:13] THOUGHT: Người dùng hỏi chi tiết một nghề cụ thể, cần gọi get_career_detail.
+[2026-07-28 16:20:13] ACTION: get_career_detail("phi_hanh_gia")
+[2026-07-28 16:20:13] OBSERVATION: LỖI: Không tìm thấy nghề 'phi_hanh_gia'. Nghề hỗ trợ: ['ai_engineer', 'data_engineer', 'backend_developer', 'business_analyst', 'ux_ui_designer'].
+[2026-07-28 16:20:15] THOUGHT: Tool không có dữ liệu cho nghề này, cần thông báo và gợi ý các nghề đang hỗ trợ.
+[2026-07-28 16:20:16] FINAL: Hiện tại hệ thống chưa có dữ liệu về nghề Phi hành gia. Bạn có thể tham khảo các nghề đang được hỗ trợ như AI Engineer, Data Engineer hoặc Backend Developer.
+```
+
+- **Diagnosis**:
+
+Nguyên nhân chính là **dữ liệu trong mock database còn giới hạn**. Người dùng có thể hỏi một nghề bất kỳ, nhưng `CAREER_DB` chỉ chứa một số nghề mẫu như `ai_engineer`, `data_engineer`, `backend_developer`, `business_analyst`, `ux_ui_designer`.
+
+Vấn đề không phải do model hay parser, mà chủ yếu đến từ **tool spec và phạm vi dữ liệu của tool**. Nếu tool không mô tả rõ cách xử lý lỗi hoặc không bắt lỗi an toàn, Agent sẽ khó xử lý khi gặp input ngoài phạm vi hỗ trợ.
+
+- **Solution**:
+
+Em sửa tool theo nguyên tắc:
+
+```text
+Lỗi nghiệp vụ là dữ liệu cho Agent suy luận, không phải exception làm crash chương trình.
+```
+
+Cụ thể, trong `get_career_detail`, nếu không tìm thấy nghề, tool sẽ trả về chuỗi lỗi rõ ràng:
+
+```python
+def get_career_detail(career_id: str) -> str:
+    try:
+        found_id = _find_career_id(career_id)
+
+        if not found_id:
+            return f"LỖI: Không tìm thấy nghề '{career_id}'. Nghề hỗ trợ: {list(CAREER_DB.keys())}."
+
+        return json.dumps(CAREER_DB[found_id], ensure_ascii=False)
+
+    except Exception as e:
+        return f"LỖI: Xảy ra lỗi khi lấy chi tiết nghề nghiệp ({e})."
+```
+
+Sau khi sửa, Agent có thể đọc **Observation** dạng `"LỖI: ..."` và chuyển hướng phản hồi bằng cách thông báo chưa có dữ liệu, đồng thời gợi ý các nghề đang được hỗ trợ.
+
+---
+
+## **III. Personal Insights: Chatbot vs ReAct (10 Points)**
+
+*Reflect on the reasoning capability difference.*
+
+1. **Reasoning**: How did the `Thought` block help the agent compared to a direct Chatbot answer?
+
+Khối **Thought** giúp Agent suy nghĩ theo từng bước trước khi trả lời. Với chatbot thông thường, mô hình có thể trả lời trực tiếp dựa trên kiến thức sẵn có, nhưng câu trả lời dễ bị chung chung hoặc mang tính suy đoán.
+
+Trong ReAct Agent, bước **Thought** giúp Agent xác định cần dùng tool nào. Ví dụ, khi người dùng nói thích Python, SQL và phân tích dữ liệu, Agent có thể suy nghĩ rằng cần gọi `search_career_paths` để tìm nghề liên quan, sau đó gọi `get_career_detail` hoặc `match_profile_to_careers` để đưa ra gợi ý có căn cứ hơn.
+
+2. **Reliability**: In which cases did the Agent actually perform *worse* than the Chatbot?
+
+Agent có thể hoạt động kém hơn chatbot trong các trường hợp câu hỏi đơn giản. Ví dụ, nếu người dùng chỉ hỏi “AI Engineer là gì?”, chatbot thường có thể trả lời ngay, còn Agent có thể mất thêm bước gọi tool.
+
+Ngoài ra, Agent cũng có thể kém hơn nếu **tool spec chưa rõ**, input truyền vào sai định dạng, hoặc dữ liệu mock chưa đủ. Ví dụ, khi người dùng hỏi nghề chưa có trong `CAREER_DB`, Agent chỉ có thể báo không tìm thấy, trong khi chatbot thông thường vẫn có thể trả lời khái quát.
+
+3. **Observation**: How did the environment feedback (observations) influence the next steps?
+
+**Observation** là phản hồi từ tool sau khi Agent thực hiện Action. Nó ảnh hưởng trực tiếp đến quyết định tiếp theo của Agent.
+
+Nếu Observation trả về dữ liệu hợp lệ, Agent sẽ dùng dữ liệu đó để tiếp tục suy luận hoặc đưa ra câu trả lời. Ví dụ, sau khi `get_career_detail("data_engineer")` trả về thông tin nghề Data Engineer, Agent có thể tiếp tục gọi `get_learning_roadmap("data_engineer", "beginner")`.
+
+Nếu Observation trả về lỗi như:
+
+```text
+LỖI: Không tìm thấy nghề 'phi_hanh_gia'.
+```
+
+Agent sẽ đổi hướng, không tiếp tục gọi tool sai nữa, mà thông báo cho người dùng và gợi ý các lựa chọn khác.
+
+---
+
+## **IV. Future Improvements (5 Points)**
+
+*How would you scale this for a production-level AI agent system?*
+
+- **Scalability**:
+
+Nếu phát triển thành hệ thống thật, em sẽ thay mock database bằng database thật. Phần tìm kiếm nghề nghiệp nên dùng **vector database** như FAISS, Chroma, Qdrant hoặc Milvus để tìm kiếm theo ngữ nghĩa. Ngoài ra, các tool nên được tách thành nhiều file riêng như `profile_tools.py`, `career_tools.py`, `recommendation_tools.py` để dễ bảo trì và mở rộng.
+
+- **Safety**:
+
+Em sẽ bổ sung validate input bằng **Pydantic** hoặc **JSON Schema** để đảm bảo Agent truyền đúng định dạng dữ liệu vào tool. Với các tool có ghi dữ liệu như `update_user_profile`, cần giới hạn các field được phép cập nhật và tránh lưu thông tin nhạy cảm không cần thiết. Log hệ thống cũng nên ẩn các thông tin cá nhân như email, số điện thoại, địa chỉ.
+
+- **Performance**:
+
+Em sẽ thêm cache cho các truy vấn phổ biến như `get_career_detail` hoặc `get_learning_roadmap`, vì dữ liệu nghề nghiệp ít thay đổi. Với `match_profile_to_careers`, nếu số lượng nghề lớn, có thể tối ưu bằng vector hóa hoặc lưu sẵn embedding của từng nghề để tính toán nhanh hơn.
+
+---
+
+> [!NOTE]
+> Submit this report by renaming it to `REPORT_Do_Tu_Anh.md` and placing it in this folder.
+- **Documentation**: [Brief explanation of how your code interacts with the ReAct loop]
+
+---
+
