@@ -165,8 +165,7 @@ def run_react_agent(user_query: str, provider, answers: Dict[str, int] = None):
         if parsed["type"] == "final_answer":
             print(f"🧠 {llm_output.strip()}")
             print(f"🏁 Final Answer: {parsed['content']}")
-            answered = True
-            break
+            return {"answer": parsed['content']}
 
         if parsed["type"] == "action":
             tool_name = parsed["tool"]
@@ -197,8 +196,72 @@ def run_react_agent(user_query: str, provider, answers: Dict[str, int] = None):
             "\nObservation: LỖI: Không nhận diện được Action hoặc Final Answer đúng định dạng."
         )
 
-    if not answered:
-        print(f"🛡️ GUARDRAIL TRIGGERED: Đã đạt giới hạn tối đa {MAX_ITERATIONS} bước. Ngắt lặp an toàn!")
+    print(f"🛡️ GUARDRAIL TRIGGERED: Đã đạt giới hạn tối đa {MAX_ITERATIONS} bước. Ngắt lặp an toàn!")
+    return {"answer": f"Hệ thống đã đạt giới hạn tối đa {MAX_ITERATIONS} bước suy luận. Xin vui lòng thử lại."}
+
+def run_react_agent_stream(user_query: str, provider, answers: Dict[str, int] = None):
+    import json
+    print(f"\n🤖 [REACT AGENT STREAM] Câu hỏi: {user_query}")
+    prompt = f"Câu hỏi của người dùng: {user_query}"
+    if answers:
+        prompt += f"\nKết quả khảo sát RIASEC của người dùng (thang điểm 1-5 mỗi trait): {answers}"
+
+    step = 0
+    while step < MAX_ITERATIONS:
+        step += 1
+        print(f"\n--- 🔄 Vòng lặp ReAct Stream (Step {step}/{MAX_ITERATIONS}) ---")
+        
+        llm_output = ""
+        is_final_answer = False
+        final_answer_marker = "Final Answer:"
+        
+        for chunk in provider.generate_stream(prompt, system_prompt=REACT_SYSTEM_PROMPT):
+            llm_output += chunk
+            if not is_final_answer:
+                idx = llm_output.find(final_answer_marker)
+                if idx != -1:
+                    is_final_answer = True
+                    content_after = llm_output[idx + len(final_answer_marker):]
+                    if content_after:
+                        yield f"data: {json.dumps({'chunk': content_after})}\n\n"
+            else:
+                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+                
+        if is_final_answer:
+            yield f"data: {json.dumps({'done': True})}\n\n"
+            return
+            
+        parsed = _parse_llm_action(llm_output)
+        
+        if parsed["type"] == "action":
+            tool_name = parsed["tool"]
+            clean_text = parsed["clean_text"]
+            print(f"🧠 {clean_text}")
+
+            tool_fn = AVAILABLE_TOOLS.get(tool_name)
+            if tool_fn is None:
+                observation = f"LỖI: Tool '{tool_name}' không tồn tại trong AVAILABLE_TOOLS."
+            else:
+                try:
+                    args = _parse_tool_args(parsed["raw_args"])
+                    observation = tool_fn(*args)
+                except Exception as e:
+                    observation = f"LỖI: Tham số cho tool '{tool_name}' không hợp lệ ({e})."
+
+            print(f"👁️ Observation: {observation}")
+            prompt += f"\n{clean_text}\nObservation: {observation}"
+            continue
+
+        print(f"🧠 (LLM không tuân theo định dạng bắt buộc):\n{llm_output.strip()}")
+        prompt += (
+            f"\n{llm_output.strip()}"
+            "\nObservation: LỖI: Không nhận diện được Action hoặc Final Answer đúng định dạng."
+        )
+
+    print(f"🛡️ GUARDRAIL TRIGGERED: Đã đạt giới hạn tối đa {MAX_ITERATIONS} bước.")
+    err_msg = f"Hệ thống đã đạt giới hạn tối đa {MAX_ITERATIONS} bước suy luận. Xin vui lòng thử lại."
+    yield f"data: {json.dumps({'chunk': err_msg})}\n\n"
+    yield f"data: {json.dumps({'done': True})}\n\n"
 
 
 if __name__ == "__main__":

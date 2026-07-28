@@ -23,6 +23,10 @@ class BaseLLMProvider:
     def generate(self, prompt: str, system_prompt: str = "") -> str:
         raise NotImplementedError
 
+    def generate_stream(self, prompt: str, system_prompt: str = ""):
+        """Sinh kết quả dạng stream (yield chunks)"""
+        raise NotImplementedError
+
 
 class GeminiProvider(BaseLLMProvider):
     """Google Gemini Provider"""
@@ -44,6 +48,24 @@ class GeminiProvider(BaseLLMProvider):
             return response.text
         except Exception as e:
             return f"[Gemini Exception]: {str(e)}"
+
+    def generate_stream(self, prompt: str, system_prompt: str = ""):
+        if not self.api_key or self.api_key == "your_gemini_api_key_here":
+            yield "[Gemini Error]: Chưa cấu hình GEMINI_API_KEY trong file .env!"
+            return
+        try:
+            from google import genai
+            client = genai.Client(api_key=self.api_key)
+            contents = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
+            response = client.models.generate_content_stream(
+                model=self.model_name,
+                contents=contents
+            )
+            for chunk in response:
+                if chunk.text:
+                    yield chunk.text
+        except Exception as e:
+            yield f"[Gemini Exception]: {str(e)}"
 
 
 class OpenAIProvider(BaseLLMProvider):
@@ -71,6 +93,29 @@ class OpenAIProvider(BaseLLMProvider):
         except Exception as e:
             return f"[OpenAI Exception]: {str(e)}"
 
+    def generate_stream(self, prompt: str, system_prompt: str = ""):
+        if not self.api_key or self.api_key == "your_openai_api_key_here":
+            yield "[OpenAI Error]: Chưa cấu hình OPENAI_API_KEY trong file .env!"
+            return
+        try:
+            import openai
+            client = openai.OpenAI(api_key=self.api_key)
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
+            
+            response = client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                stream=True
+            )
+            for chunk in response:
+                if chunk.choices[0].delta.content is not None:
+                    yield chunk.choices[0].delta.content
+        except Exception as e:
+            yield f"[OpenAI Exception]: {str(e)}"
+
 
 class AnthropicProvider(BaseLLMProvider):
     """Anthropic Claude Provider (Claude 3.5 Sonnet, Claude 3 Haiku)"""
@@ -96,6 +141,27 @@ class AnthropicProvider(BaseLLMProvider):
             return response.content[0].text
         except Exception as e:
             return f"[Anthropic Exception]: {str(e)}"
+
+    def generate_stream(self, prompt: str, system_prompt: str = ""):
+        if not self.api_key or self.api_key == "your_anthropic_api_key_here":
+            yield "[Anthropic Error]: Chưa cấu hình ANTHROPIC_API_KEY trong file .env!"
+            return
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=self.api_key)
+            kwargs = {
+                "model": self.model_name,
+                "max_tokens": 1000,
+                "messages": [{"role": "user", "content": prompt}]
+            }
+            if system_prompt:
+                kwargs["system"] = system_prompt
+                
+            with client.messages.stream(**kwargs) as stream:
+                for text in stream.text_stream:
+                    yield text
+        except Exception as e:
+            yield f"[Anthropic Exception]: {str(e)}"
 
 
 class OpenRouterProvider(BaseLLMProvider):
@@ -130,6 +196,48 @@ class OpenRouterProvider(BaseLLMProvider):
         except Exception as e:
             return f"[OpenRouter Exception]: {str(e)}"
 
+    def generate_stream(self, prompt: str, system_prompt: str = ""):
+        if not self.api_key or self.api_key == "your_openrouter_api_key_here":
+            yield "[OpenRouter Error]: Chưa cấu hình OPENROUTER_API_KEY trong file .env!"
+            return
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json"
+            }
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
+            
+            payload = {
+                "model": self.model_name,
+                "messages": messages,
+                "stream": True
+            }
+            res = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, stream=True, timeout=30)
+            if res.status_code == 200:
+                for line in res.iter_lines():
+                    if line:
+                        line = line.decode('utf-8')
+                        if line.startswith('data: '):
+                            data_str = line[6:]
+                            if data_str.strip() == '[DONE]':
+                                break
+                            try:
+                                import json
+                                data = json.loads(data_str)
+                                if "choices" in data and len(data["choices"]) > 0:
+                                    delta = data["choices"][0].get("delta", {})
+                                    if "content" in delta:
+                                        yield delta["content"]
+                            except:
+                                pass
+            else:
+                yield f"[OpenRouter API Error {res.status_code}]: {res.text}"
+        except Exception as e:
+            yield f"[OpenRouter Exception]: {str(e)}"
+
 
 class MockProvider(BaseLLMProvider):
     """Offline Mock Provider (Cho bài test không cần kết nối API)"""
@@ -149,6 +257,13 @@ class MockProvider(BaseLLMProvider):
                 "Action: run_personality_assessment[{'R': 2, 'I': 5, 'A': 3, 'S': 2, 'E': 1, 'C': 4}]"
             )
         return "🤖 [Mock Provider]: Phản hồi giả lập offline cho bài test."
+
+    def generate_stream(self, prompt: str, system_prompt: str = ""):
+        import time
+        result = self.generate(prompt, system_prompt)
+        for word in result.split(" "):
+            yield word + " "
+            time.sleep(0.05)
 
 
 def get_llm_provider(provider_name: str = None) -> BaseLLMProvider:
